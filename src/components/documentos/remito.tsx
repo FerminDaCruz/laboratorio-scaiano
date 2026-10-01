@@ -1,0 +1,119 @@
+"use client";
+
+import type { LineaRemito, RemitoConDoctor, ResumenCuenta } from "@/components/remitos/consultas";
+import { formatFechaLarga, formatOT, formatRemito } from "@/lib/format";
+import { ANCHO_TICKET_MM } from "@/lib/impresion";
+import { formatARS } from "@/lib/money";
+
+/** Remito de entrega (§5D). Blanco y negro, monoespaciado, medidas en mm. */
+export function DocumentoRemito({
+  remito,
+  lineas,
+  cuenta,
+}: {
+  remito: RemitoConDoctor;
+  lineas: LineaRemito[];
+  cuenta: ResumenCuenta;
+}) {
+  return (
+    <>
+      <style>{`
+        .remito {
+          width: ${ANCHO_TICKET_MM}mm;
+          padding: 3mm;
+          background: #fff;
+          color: #000;
+          font-family: var(--font-mono);
+          font-size: 9pt;
+          line-height: 1.35;
+        }
+        .remito h1 { font-size: 13pt; font-weight: 600; margin: 0; }
+        .remito table { width: 100%; border-collapse: collapse; }
+        .remito td { padding: 0.4mm 0; vertical-align: top; }
+        .remito .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .remito hr { border: 0; border-top: 1px solid #000; margin: 2mm 0; }
+        .remito .leyenda { margin-top: 3mm; text-align: center; text-transform: uppercase; }
+        .remito .anulado { border: 1px solid #000; padding: 1mm; text-align: center; margin-bottom: 2mm; }
+
+        @media print {
+          @page { size: ${ANCHO_TICKET_MM}mm auto; margin: 4mm; }
+          .remito { width: auto; padding: 0; }
+        }
+      `}</style>
+
+      <div className="remito">
+        {remito.anulado_en && <p className="anulado">ANULADO</p>}
+
+        <h1>REMITO {formatRemito(remito.numero)}</h1>
+        <p>{formatFechaLarga(remito.fecha)}</p>
+        <p>
+          dr/a: {remito.doctor?.nombre ?? "—"}
+          {remito.doctor ? ` (ficha ${remito.doctor.ficha})` : ""}
+        </p>
+
+        <hr />
+
+        <table>
+          <tbody>
+            {lineas.map((linea) => (
+              <tr key={linea.id}>
+                <td>{linea.orden ? formatOT(linea.orden.numero) : "—"}</td>
+                <td>{linea.orden?.paciente ?? "—"}</td>
+                <td className="num">{formatARS(linea.importe)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <hr />
+
+        <table>
+          <tbody>
+            <tr>
+              <td>TOTAL</td>
+              <td className="num">{formatARS(remito.total)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <hr />
+
+        <p>CUENTA CORRIENTE</p>
+        <table>
+          <tbody>
+            <tr>
+              <td>saldo anterior</td>
+              <td className="num">{formatARS(cuenta.saldoAnterior)}</td>
+            </tr>
+            <tr>
+              <td>fact/mes</td>
+              <td className="num">{formatARS(cuenta.facturadoMes)}</td>
+            </tr>
+            <tr>
+              <td>pagos del mes</td>
+              <td className="num">{formatARS(cuenta.pagosMes)}</td>
+            </tr>
+            <tr>
+              <td>saldo cta cte</td>
+              <td className="num">{formatARS(cuenta.saldoCuenta)}</td>
+            </tr>
+            <tr>
+              <td>OT entregadas</td>
+              <td className="num">{lineas.length}</td>
+            </tr>
+            <tr>
+              <td>este ticket</td>
+              <td className="num">{formatARS(cuenta.esteTicket)}</td>
+            </tr>
+            <tr>
+              <td>saldo total</td>
+              <td className="num">{formatARS(cuenta.saldoTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p className="leyenda">documento no válido como factura</p>
+      </div>
+    </>
+  );
+}

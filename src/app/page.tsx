@@ -1,69 +1,169 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { resumenTablero, type ResumenTablero } from "@/components/reportes/consultas";
+import { ErrorConsulta } from "@/components/listado/pagina-listado";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useConsulta } from "@/hooks/use-consulta";
+import { formatARS } from "@/lib/money";
+import { ETIQUETA_ESTADO } from "@/lib/tipos";
+
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+function Tarjeta({
+  etiqueta,
+  valor,
+  detalle,
+  tono,
+}: {
+  etiqueta: string;
+  valor: string;
+  detalle?: string;
+  tono?: "ok" | "warn" | "danger";
+}) {
+  const color = tono === "ok" ? "text-ok" : tono === "warn" ? "text-warn" : tono === "danger" ? "text-danger" : "";
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex min-w-56 flex-1 flex-col gap-1 rounded-md border border-border bg-surface p-4">
+      <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">{etiqueta}</span>
+      <span className={`text-2xl font-semibold tabular-nums ${color}`}>{valor}</span>
+      {detalle && <span className="text-xs text-ink-2">{detalle}</span>}
+    </div>
+  );
+}
+
+export default function TableroPage() {
+  const ahora = new Date();
+  const anio = ahora.getFullYear();
+  const mes = ahora.getMonth() + 1;
+
+  const { consulta, recargar } = useConsulta<ResumenTablero>(
+    () => resumenTablero(anio, mes),
+    [anio, mes],
+    "No se pudo cargar el tablero. Revisá la conexión y probá de nuevo.",
+  );
+
+  if (consulta.estado === "cargando") {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap gap-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-24 min-w-56 flex-1" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (consulta.estado === "error") {
+    return <ErrorConsulta mensaje={consulta.mensaje} onReintentar={recargar} />;
+  }
+
+  const r = consulta.datos;
+  const diferencia = r.facturadoMes - r.facturadoMesAnterior;
+  const porcentaje =
+    r.facturadoMesAnterior === 0
+      ? null
+      : Math.round((diferencia / r.facturadoMesAnterior) * 100);
+  const enCurso = r.ordenesPorEstado.ingresada + r.ordenesPorEstado.en_proceso;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap gap-4">
+        <Tarjeta
+          etiqueta={`Facturado de ${MESES[mes - 1]}`}
+          valor={formatARS(r.facturadoMes)}
+          detalle={
+            porcentaje === null
+              ? `El mes anterior: ${formatARS(r.facturadoMesAnterior)}`
+              : `${porcentaje >= 0 ? "+" : ""}${porcentaje}% contra ${MESES[(mes + 10) % 12]}`
+          }
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <Tarjeta
+          etiqueta="Deuda total"
+          valor={formatARS(r.deudaTotal)}
+          detalle={`${r.doctoresConDeuda} ${r.doctoresConDeuda === 1 ? "doctor" : "doctores"} con saldo`}
+          tono={r.deudaTotal > 0 ? "warn" : undefined}
+        />
+        <Tarjeta
+          etiqueta="Órdenes en curso"
+          valor={String(enCurso)}
+          detalle={`${r.ordenesPorEstado.terminada} terminadas esperando entrega`}
+        />
+        <Tarjeta
+          etiqueta="Atrasadas"
+          valor={String(r.ordenesAtrasadas)}
+          detalle="Pasó la fecha comprometida"
+          tono={r.ordenesAtrasadas > 0 ? "danger" : "ok"}
+        />
+      </div>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+            Doctores con más deuda
+          </h2>
+          <Button variant="outline" nativeButton={false} render={<Link href="/reportes" />}>
+            Ver reportes del mes
+          </Button>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        <div className="overflow-hidden rounded-md border border-border bg-surface">
+          {r.deudores.length === 0 ? (
+            <p className="p-4 text-ink-3">Ningún doctor tiene deuda pendiente.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Ficha</TableHead>
+                  <TableHead>Doctor</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {r.deudores.map((d) => (
+                  <TableRow key={d.doctorId}>
+                    <TableCell className="font-mono tabular-nums">{d.ficha}</TableCell>
+                    <TableCell>
+                      <Link className="underline-offset-2 hover:underline" href={`/cuenta-corriente?doctor=${d.doctorId}`}>
+                        {d.doctor}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatARS(d.saldo)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+          Órdenes por estado
+        </h2>
+        <div className="flex flex-wrap gap-4">
+          {(Object.keys(r.ordenesPorEstado) as (keyof typeof r.ordenesPorEstado)[]).map((estado) => (
+            <Tarjeta
+              key={estado}
+              etiqueta={ETIQUETA_ESTADO[estado]}
+              valor={String(r.ordenesPorEstado[estado])}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ))}
         </div>
-      </main>
+      </section>
     </div>
   );
 }
