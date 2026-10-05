@@ -557,6 +557,50 @@ Reglas:
 
 ---
 
+### [2026-10-05] Etapa E0 · Modo demo: entrar sin pantalla de login
+
+**Hecho**
+- Si están cargadas `NEXT_PUBLIC_DEMO_EMAIL` y `NEXT_PUBLIC_DEMO_PASSWORD`, la app inicia
+  sesión sola con esa cuenta y nadie ve la pantalla de login
+- Si el ingreso automático falla, se muestra el login normal: no queda en un bucle
+- La barra superior muestra un badge **Modo demo** para que no se confunda con una sesión propia
+- Sin esas variables, todo sigue exactamente igual que antes
+
+**Archivos**
+- `src/components/layout/session.tsx` · `src/components/layout/topbar.tsx`
+
+**Decisiones**
+- Se hace con una cuenta real y no abriendo RLS a anónimos: los datos siguen protegidos por
+  la base, y el corte es desactivar ese usuario o sacar las variables
+- La contraseña de la cuenta demo queda dentro del JavaScript que descarga el navegador: es
+  pública para cualquiera que tenga el link. Por eso va una cuenta hecha para eso, con rol
+  `operador`, y no una cuenta de una persona
+
+**Pendiente**
+- Falta probarlo: Docker estaba apagado y la base local no respondía. Se prueba creando la
+  cuenta demo en el proyecto de Supabase y cargando las dos variables
+
+---
+
+### [2026-10-05] Etapa E0 · El login dejaba al usuario sin habilitar en silencio
+
+**Hecho**
+- Si alguien entraba con datos correctos pero no tenía fila en `usuarios`, la pantalla de
+  login se quedaba quieta, sin error y sin pasar a la aplicación: la sesión existía, pero
+  el guard no redirige hasta que el usuario está habilitado
+- Ahora el login muestra qué pasó, con el email de la cuenta, y ofrece salir para probar con otra
+
+**Archivos**
+- `src/app/login/page.tsx`
+
+**Decisiones**
+- El mensaje va en el login y no en un toast: es una condición permanente de esa cuenta,
+  no un error pasajero
+- El caso se descubrió al conectar la app al proyecto de Supabase de producción, donde el
+  usuario estaba creado en Auth pero faltaba el alta en `usuarios`
+
+---
+
 ### [2026-10-03] Etapa E9 · Un doctor dado de baja no esconde su deuda
 
 **Hecho**

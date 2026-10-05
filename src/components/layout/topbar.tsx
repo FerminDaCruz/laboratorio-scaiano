@@ -4,6 +4,7 @@ import { ChevronDownIcon, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabase } from "@/lib/supabase";
 import { tituloDeRuta } from "./nav";
-import { useSesion } from "./session";
+import { MODO_DEMO, useSesion } from "./session";
 
 export function Topbar() {
   const pathname = usePathname();
@@ -27,7 +28,10 @@ export function Topbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-6 print:hidden">
-      <h1 className="truncate text-xl font-semibold">{tituloDeRuta(pathname)}</h1>
+      <div className="flex min-w-0 items-center gap-3">
+        <h1 className="truncate text-xl font-semibold">{tituloDeRuta(pathname)}</h1>
+        {MODO_DEMO && <Badge variant="warn">Modo demo</Badge>}
+      </div>
       {sesion.estado === "autenticado" || sesion.estado === "sin-habilitar" ? (
         <MenuUsuario email={sesion.session.user.email ?? ""} />
       ) : (

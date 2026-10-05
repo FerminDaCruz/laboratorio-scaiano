@@ -16,6 +16,20 @@ export type EstadoSesion =
 
 const SessionContext = createContext<EstadoSesion>({ estado: "cargando" });
 
+/**
+ * Modo demo: si están cargadas estas dos variables, la app inicia sesión sola con
+ * esa cuenta y nadie ve la pantalla de login.
+ *
+ * La contraseña viaja dentro del JavaScript que descarga el navegador, así que es
+ * pública para cualquiera que tenga el link. Se usa con una cuenta hecha para eso,
+ * y se corta de dos maneras: sacando las variables y volviendo a desplegar, o
+ * desactivando ese usuario en la tabla `usuarios`.
+ */
+const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_EMAIL;
+const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
+
+export const MODO_DEMO = Boolean(DEMO_EMAIL && DEMO_PASSWORD);
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sesion, setSesion] = useState<EstadoSesion>({ estado: "cargando" });
 
@@ -29,9 +43,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
 
     let vigente = true;
+    let demoIntentado = false;
 
     async function aplicar(session: Session | null) {
       if (!session) {
+        // En modo demo se entra solo, una sola vez: si falla, se muestra el login.
+        if (MODO_DEMO && !demoIntentado) {
+          demoIntentado = true;
+          const { error } = await getSupabase().auth.signInWithPassword({
+            email: DEMO_EMAIL as string,
+            password: DEMO_PASSWORD as string,
+          });
+          if (!error) return; // onAuthStateChange vuelve a entrar acá con la sesión
+        }
         if (vigente) setSesion({ estado: "anonimo" });
         return;
       }

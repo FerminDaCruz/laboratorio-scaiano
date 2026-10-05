@@ -78,7 +78,22 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-4 shadow-sm">
         <h1 className="text-xl font-semibold">Iniciar sesión</h1>
 
-        {sesion.estado === "sin-configurar" ? (
+        {sesion.estado === "sin-habilitar" ? (
+          <div className="mt-6 flex flex-col gap-3">
+            <p className="text-danger">
+              Entraste, pero tu usuario todavía no está habilitado en el sistema.
+            </p>
+            <p className="text-ink-2">
+              La cuenta {sesion.session.user.email} existe, pero le falta el alta en la tabla de
+              usuarios del laboratorio. Pedísela a un administrador.
+            </p>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => void getSupabase().auth.signOut()}>
+                Salir y probar con otra cuenta
+              </Button>
+            </div>
+          </div>
+        ) : sesion.estado === "sin-configurar" ? (
           <div className="mt-6">
             <ErrorConfiguracion />
           </div>
