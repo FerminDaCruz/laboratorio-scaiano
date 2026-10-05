@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatNumero } from "@/lib/format";
 
 export const FILAS_POR_PAGINA = 50;
 
@@ -54,8 +55,8 @@ export function PiePaginado({
     <div className="flex items-center justify-between gap-4 text-xs text-ink-2">
       <span className="tabular-nums">
         {total === null
-          ? `${cantidadEnPagina} ${etiqueta}`
-          : `${desde}–${hasta} de ${total} ${etiqueta}`}
+          ? `${formatNumero(cantidadEnPagina)} ${etiqueta}`
+          : `${formatNumero(desde)}–${formatNumero(hasta)} de ${formatNumero(total)} ${etiqueta}`}
       </span>
       <div className="flex items-center gap-2">
         <Button variant="outline" disabled={pagina === 0} onClick={() => onPagina(pagina - 1)}>

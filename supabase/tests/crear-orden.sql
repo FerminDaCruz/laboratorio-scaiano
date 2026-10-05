@@ -19,11 +19,11 @@ set local role authenticated;
 
 \echo '--- 1. crear_orden con dos items'
 select public.crear_orden(
-  (select id from public.doctores where ficha = 101),
+  (select id from public.doctores where ficha = 100101),
   'Rodríguez, Ana María',
   json_build_array(
     json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 3, 'piezas', '2.4-2.6'),
-    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'PCA'), 'cantidad', 1, 'piezas', 'arcada:sup')
+    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CZRM'), 'cantidad', 1, 'piezas', 'arcada:sup')
   )::jsonb,
   'F', 54::smallint,
   (select id from public.obras_sociales where codigo = 'OSDE'),
@@ -67,7 +67,7 @@ select numero, estado from public.ordenes;
 do $$
 begin
   perform public.crear_orden(
-    (select id from public.doctores where ficha = 101), 'Paciente sin items', '[]'::jsonb
+    (select id from public.doctores where ficha = 100101), 'Paciente sin items', '[]'::jsonb
   );
   raise exception 'ERROR: deberia haber fallado';
 exception when others then
@@ -82,7 +82,7 @@ set local role authenticated;
 do $$
 begin
   perform public.crear_orden(
-    (select id from public.doctores where ficha = 101),
+    (select id from public.doctores where ficha = 100101),
     'Paciente con trabajo sin precio',
     json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'ZZZ'), 'cantidad', 1))::jsonb
   );
@@ -98,7 +98,7 @@ select count(*) as ordenes from public.ordenes;
 \echo '--- 10. el libro mayor no se edita ni se borra'
 reset role;
 insert into public.movimientos_cc (doctor_id, tipo, importe)
-select id, 'ajuste', 1000.00 from public.doctores where ficha = 101;
+select id, 'ajuste', 1000.00 from public.doctores where ficha = 100101;
 do $$
 begin
   update public.movimientos_cc set importe = 2000.00;

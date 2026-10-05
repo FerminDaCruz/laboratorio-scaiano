@@ -75,7 +75,16 @@ function ListadoCuentas() {
 
   const columnas: Columna<CuentaDoctor>[] = [
     { clave: "ficha", titulo: "Ficha", mono: true, numerica: true, ancho: "w-20", render: (c) => c.doctor.ficha },
-    { clave: "doctor", titulo: "Doctor", render: (c) => c.doctor.nombre },
+    {
+      clave: "doctor",
+      titulo: "Doctor",
+      render: (c) => (
+        <span>
+          {c.doctor.nombre}
+          {!c.doctor.activo && <span className="text-ink-3"> · inactivo</span>}
+        </span>
+      ),
+    },
     {
       clave: "estado",
       titulo: "Estado",

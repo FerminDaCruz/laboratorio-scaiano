@@ -60,12 +60,26 @@ sigue con lo que sí puede hacer.
 Cuando un agente se cruce con algo de esta lista: dejá un `TODO` marcado, seguí con lo
 que sí se puede, y anotalo en la bitácora. **No inventes un reemplazo.**
 
-### 🔒 Impresora térmica — bloquea E13
+### ✅ Impresora térmica — ya se sabe cuál es (03/10/2026)
 
-No está comprada todavía. Falta saber marca, modelo y **ancho de papel (58 u 80 mm)**.
+Según la etiqueta del equipo (`docs/fuentes/impresora.jpeg`):
 
-Mientras tanto: la comanda y el remito se generan en pantalla y como PDF. El ancho
-queda como constante configurable en un solo lugar, no repartido por el código.
+| Dato | Valor |
+|---|---|
+| Modelo | 3nStar RPT005, Thermal Receipt Printer |
+| Ancho de papel | **80 mm** |
+| Velocidad | 200 mm/s |
+| Interfaz | RS232 + USB |
+| Comandos | **ESC/POS** |
+| Cajón de dinero | 24 V / 1 A |
+| Alimentación | 24 V / 2,5 A |
+
+El sistema ya estaba configurado en 80 mm (`ANCHO_TICKET_MM` en `src/lib/impresion.ts`),
+así que no hay que cambiar nada para empezar a probar.
+
+Lo que queda de E13: imprimir una comanda y un remito de verdad para ver cómo quedan en el
+papel, y recién ahí decidir si alcanza con Chrome en `--kiosk-printing` o si hace falta un
+agente ESC/POS para el corte automático. La impresora soporta ESC/POS, así que la opción existe.
 
 ### 🔒 Lectora de código de barras — bloquea parte de E8
 

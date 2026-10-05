@@ -15,13 +15,13 @@ select set_config('request.jwt.claims',
 set local role authenticated;
 
 \echo '--- preparo un remito y un pago del mes pasado'
-select public.crear_orden((select id from public.doctores where ficha = 103), 'Paciente del mes pasado',
+select public.crear_orden((select id from public.doctores where ficha = 100103), 'Paciente del mes pasado',
   json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1))::jsonb,
   null, null, null, null, null, (date_trunc('month', current_date) - interval '1 month')::date) as orden;
-select public.emitir_remito((select id from public.doctores where ficha = 103),
+select public.emitir_remito((select id from public.doctores where ficha = 100103),
   array[(select id from public.ordenes where paciente = 'Paciente del mes pasado')],
   (date_trunc('month', current_date) - interval '1 month')::date) as remito;
-select public.registrar_pago((select id from public.doctores where ficha = 103), 30000.00,
+select public.registrar_pago((select id from public.doctores where ficha = 100103), 30000.00,
   (date_trunc('month', current_date) - interval '1 month' + interval '10 days')::date) as pago;
 
 \echo '--- 1. un operador no puede cerrar el período'
@@ -53,7 +53,7 @@ select d.ficha, s.saldo_anterior, s.facturado, s.pagos, s.saldo_final
 \echo '--- 4. un movimiento con fecha del mes cerrado se rechaza si no es ajuste'
 do $$
 begin
-  perform public.registrar_pago((select id from public.doctores where ficha = 103), 1000.00,
+  perform public.registrar_pago((select id from public.doctores where ficha = 100103), 1000.00,
     (date_trunc('month', current_date) - interval '1 month' + interval '5 days')::date);
   raise exception 'ERROR: deberia haber fallado';
 exception when others then
@@ -66,7 +66,7 @@ reset role;
 insert into public.movimientos_cc (doctor_id, fecha, tipo, importe, referencia)
 select id, (date_trunc('month', current_date) - interval '1 month' + interval '5 days')::date,
        'ajuste', 1000.00, 'Ajuste posterior al cierre'
-  from public.doctores where ficha = 103;
+  from public.doctores where ficha = 100103;
 set local role authenticated;
 select count(*) as ajustes from public.movimientos_cc where tipo = 'ajuste';
 

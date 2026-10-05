@@ -10,17 +10,27 @@ export function Campo({
   etiqueta,
   error,
   ayuda,
+  requerido = false,
   children,
 }: {
   id: string;
   etiqueta: string;
   error?: string;
   ayuda?: string;
+  /** Marca el campo con un asterisco; la aclaración va en <NotaCamposRequeridos />. */
+  requerido?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>{etiqueta}</Label>
+      <Label htmlFor={id}>
+        {etiqueta}
+        {requerido && (
+          <span className="text-danger" aria-hidden>
+            *
+          </span>
+        )}
+      </Label>
       {children}
       {!error && ayuda && <p className="text-xs text-ink-3">{ayuda}</p>}
       {error && (
@@ -48,6 +58,11 @@ export function SeccionFormulario({
       {children}
     </section>
   );
+}
+
+/** Aclaración al pie de un formulario que tiene campos marcados con asterisco. */
+export function NotaCamposRequeridos() {
+  return <p className="text-xs text-ink-3">* Campos obligatorios. El resto se puede completar después.</p>;
 }
 
 /** Acciones abajo a la derecha: Cancelar (outline) y la primaria. */

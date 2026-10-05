@@ -1,4 +1,5 @@
 import { FILAS_POR_PAGINA } from "@/components/listado/pagina-listado";
+import { centavosDesdeNumeric, type Centavos } from "@/lib/money";
 import { getSupabase } from "@/lib/supabase";
 import { limpiarParaBusqueda } from "@/lib/texto";
 import type { Doctor, ObraSocial } from "@/lib/tipos";
@@ -55,6 +56,34 @@ export async function listarDoctores(
   return { filas: (data ?? []) as Doctor[], total: count ?? 0 };
 }
 
+// Las fichas nuevas empiezan con 100 y tienen seis dígitos: 100101, 100304…
+export const FICHA_MINIMA = 100000;
+export const FICHA_MAXIMA = 100999;
+const PRIMERA_FICHA = 100101;
+
+export function fichaConFormato(ficha: number): boolean {
+  return Number.isInteger(ficha) && ficha >= FICHA_MINIMA && ficha <= FICHA_MAXIMA;
+}
+
+/** La ficha libre más chica después de la última usada, dentro del formato. */
+export async function proximaFichaLibre(): Promise<number> {
+  const { data, error } = await getSupabase()
+    .from("doctores")
+    .select("ficha")
+    .gte("ficha", FICHA_MINIMA)
+    .lte("ficha", FICHA_MAXIMA)
+    .order("ficha", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+
+  const ultima = data?.[0]?.ficha as number | undefined;
+  if (ultima === undefined) return PRIMERA_FICHA;
+  if (ultima >= FICHA_MAXIMA) {
+    throw new Error("No quedan fichas libres con el formato 100xxx");
+  }
+  return ultima + 1;
+}
+
 /** Todos los doctores activos, para los combobox de otras pantallas. */
 export async function listarDoctoresParaCombo(): Promise<Doctor[]> {
   const { data, error } = await getSupabase()
@@ -64,6 +93,17 @@ export async function listarDoctoresParaCombo(): Promise<Doctor[]> {
     .order("nombre");
   if (error) throw error;
   return (data ?? []) as Doctor[];
+}
+
+/** Saldo de cuenta corriente del doctor: positivo es deuda. */
+export async function saldoDeDoctor(doctorId: number): Promise<Centavos> {
+  const { data, error } = await getSupabase()
+    .from("v_saldos_doctor")
+    .select("saldo")
+    .eq("doctor_id", doctorId)
+    .maybeSingle();
+  if (error) throw error;
+  return centavosDesdeNumeric((data?.saldo as number) ?? 0);
 }
 
 export async function listarObrasSociales(soloActivas = false): Promise<ObraSocial[]> {

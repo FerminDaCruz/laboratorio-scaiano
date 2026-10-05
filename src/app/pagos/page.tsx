@@ -13,6 +13,7 @@ import {
 import { listarDoctoresParaCombo } from "@/components/doctores/datos";
 import { AccionesFormulario, Campo, SeccionFormulario } from "@/components/formulario/campo";
 import { Combobox } from "@/components/formulario/combobox";
+import { InputMonto } from "@/components/formulario/input-monto";
 import { SelectSimple } from "@/components/formulario/select-simple";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -144,13 +145,12 @@ function Pagos() {
 
             <div className="flex flex-wrap gap-3">
               <Campo id="importe" etiqueta="Importe" error={errores.importe} ayuda="Por ejemplo 100.000,50">
-                <Input
+                <InputMonto
                   id="importe"
-                  inputMode="decimal"
                   className="w-44"
-                  value={importe}
-                  aria-invalid={errores.importe ? true : undefined}
-                  onChange={(e) => setImporte(e.target.value)}
+                  valor={importe}
+                  invalido={Boolean(errores.importe)}
+                  onCambio={setImporte}
                 />
               </Campo>
               <Campo id="fecha" etiqueta="Fecha">

@@ -60,6 +60,26 @@ export function centavosDesdeTexto(texto: string): Centavos | null {
   return centavosDesdeNumeric(normalizado);
 }
 
+/**
+ * Formatea lo que se va tipeando en un campo de monto: separa los miles con
+ * punto y deja como mucho dos decimales después de la coma.
+ * "185000" → "185.000" · "1234567,5" → "1.234.567,5"
+ */
+export function formatearEntradaMonto(texto: string): string {
+  const soloValidos = texto.replace(/[^\d.,]/g, "");
+  // El punto es separador de miles: se descarta y se vuelve a calcular.
+  const sinMiles = soloValidos.replace(/\./g, "");
+  const tieneComa = sinMiles.includes(",");
+  const [crudos = "", ...resto] = sinMiles.split(",");
+  const decimales = resto.join("").slice(0, 2);
+
+  let enteros = crudos.replace(/^0+(?=\d)/, "");
+  if (enteros === "" && tieneComa) enteros = "0";
+
+  const agrupados = enteros.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return tieneComa ? `${agrupados},${decimales}` : agrupados;
+}
+
 /** 18500050 → "185000,50", para mostrar dentro de un campo de texto. */
 export function textoDesdeCentavos(centavos: Centavos): string {
   assertCentavos(centavos);

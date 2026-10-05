@@ -81,6 +81,15 @@ export async function agregarPrecio(
   if (error) throw error;
 }
 
+/** Corrige el precio ya cargado para una fecha, en vez de duplicar la fila. */
+export async function corregirPrecio(precioId: number, precio: Centavos): Promise<void> {
+  const { error } = await getSupabase()
+    .from("precios_trabajo")
+    .update({ precio: numericParaPostgres(precio) })
+    .eq("id", precioId);
+  if (error) throw error;
+}
+
 export async function agregarPreciosEnLote(
   filas: { trabajo_id: number; precio: Centavos; vigente_desde: string }[],
 ): Promise<void> {

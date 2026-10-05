@@ -7,6 +7,17 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { CODIGO_DUPLICADO } from "@/components/doctores/datos";
 import { AccionesFormulario, Campo, Dato, SeccionFormulario } from "@/components/formulario/campo";
+import { InputMonto } from "@/components/formulario/input-monto";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +26,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
 import { useConsulta } from "@/hooks/use-consulta";
-import { formatFechaCorta } from "@/lib/format";
-import { centavosDesdeTexto, formatARS, textoDesdeCentavos } from "@/lib/money";
+import { formatFechaCorta, formatFechaLarga } from "@/lib/format";
+import { centavosDesdeTexto, formatARS, textoDesdeCentavos, type Centavos } from "@/lib/money";
+import { mensajeDeErrorSupabase } from "@/lib/errores";
 import type { PrecioTrabajo, TrabajoConPrecio } from "@/lib/tipos";
-import { agregarPrecio, guardarTrabajo, listarPreciosDe } from "./datos";
+import { agregarPrecio, corregirPrecio, guardarTrabajo, listarPreciosDe } from "./datos";
 
 const esquemaTrabajo = z.object({
   codigo: z.string().trim().min(1, "Ingresá el código.").max(12, "El código es muy largo."),
@@ -150,6 +162,7 @@ function DetalleTrabajo({
         {agregando ? (
           <FormularioDePrecio
             trabajoId={trabajo.id}
+            precios={consulta.estado === "listo" ? consulta.datos : []}
             onCancelar={() => setAgregando(false)}
             onGuardado={() => {
               setAgregando(false);
@@ -172,34 +185,62 @@ function DetalleTrabajo({
 
 function FormularioDePrecio({
   trabajoId,
+  precios,
   onCancelar,
   onGuardado,
 }: {
   trabajoId: number;
+  precios: PrecioTrabajo[];
   onCancelar: () => void;
   onGuardado: () => void;
 }) {
   const {
-    register,
+    control,
     handleSubmit,
+    register,
     formState: { errors, isSubmitting },
   } = useForm<FormularioPrecio>({
     resolver: zodResolver(esquemaPrecio),
     defaultValues: { precio: "", vigente_desde: hoy() },
   });
 
+  // Cuando ya hay un precio para esa fecha, se pregunta si se corrige.
+  const [aReemplazar, setAReemplazar] = useState<
+    { precio: PrecioTrabajo; centavos: Centavos } | null
+  >(null);
+
+  async function escribir(centavos: Centavos, fecha: string, existente: PrecioTrabajo | null) {
+    try {
+      if (existente) {
+        await corregirPrecio(existente.id, centavos);
+        toast.success("Precio corregido");
+      } else {
+        await agregarPrecio(trabajoId, centavos, fecha);
+        toast.success("Precio agregado");
+      }
+      setAReemplazar(null);
+      onGuardado();
+    } catch (error) {
+      toast.error(
+        mensajeDeErrorSupabase(
+          error,
+          "No se pudo guardar el precio. Revisá la conexión y probá de nuevo.",
+        ),
+        { duration: Infinity },
+      );
+    }
+  }
+
   async function guardar(datos: FormularioPrecio) {
     const centavos = centavosDesdeTexto(datos.precio);
     if (centavos === null) return;
-    try {
-      await agregarPrecio(trabajoId, centavos, datos.vigente_desde);
-      toast.success("Precio agregado");
-      onGuardado();
-    } catch {
-      toast.error("No se pudo guardar el precio. Revisá la conexión y probá de nuevo.", {
-        duration: Infinity,
-      });
+
+    const existente = precios.find((p) => p.vigente_desde === datos.vigente_desde);
+    if (existente) {
+      setAReemplazar({ precio: existente, centavos });
+      return;
     }
+    await escribir(centavos, datos.vigente_desde, null);
   }
 
   return (
@@ -210,12 +251,53 @@ function FormularioDePrecio({
       onKeyDown={alTeclearEnFormulario}
     >
       <Campo id="precio" etiqueta="Precio" error={errors.precio?.message} ayuda="Por ejemplo 185.000,50">
-        <Input id="precio" autoFocus inputMode="decimal" {...register("precio")} />
+        <Controller
+          control={control}
+          name="precio"
+          render={({ field }) => (
+            <InputMonto
+              id="precio"
+              autoFocus
+              className="w-48"
+              valor={field.value}
+              onCambio={field.onChange}
+              invalido={Boolean(errors.precio)}
+            />
+          )}
+        />
       </Campo>
       <Campo id="vigente_desde" etiqueta="Vigente desde" error={errors.vigente_desde?.message}>
         <Input id="vigente_desde" type="date" {...register("vigente_desde")} />
       </Campo>
       <AccionesFormulario onCancelar={onCancelar} guardando={isSubmitting} etiqueta="Agregar precio" />
+
+      <AlertDialog open={aReemplazar !== null} onOpenChange={(abierto) => !abierto && setAReemplazar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ya hay un precio para esa fecha</AlertDialogTitle>
+            <AlertDialogDescription>
+              {aReemplazar &&
+                `Desde el ${formatFechaLarga(aReemplazar.precio.vigente_desde)} el precio cargado es ${formatARS(aReemplazar.precio.precio)}. Si seguís, queda ${formatARS(aReemplazar.centavos)}. Los precios de otras fechas y las órdenes ya cargadas no cambian.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (aReemplazar) {
+                  void escribir(
+                    aReemplazar.centavos,
+                    aReemplazar.precio.vigente_desde,
+                    aReemplazar.precio,
+                  );
+                }
+              }}
+            >
+              Corregir el precio
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }
@@ -316,12 +398,13 @@ function FormularioDeTrabajo({
 
       {trabajo === null && (
         <Campo id="precio_inicial" etiqueta="Precio inicial" error={errorPrecio} ayuda="Opcional. Rige desde hoy.">
-          <Input
+          <InputMonto
             id="precio_inicial"
-            inputMode="decimal"
-            value={precioInicial}
-            onChange={(e) => {
-              setPrecioInicial(e.target.value);
+            className="w-48"
+            valor={precioInicial}
+            invalido={Boolean(errorPrecio)}
+            onCambio={(valor) => {
+              setPrecioInicial(valor);
               setErrorPrecio(undefined);
             }}
           />

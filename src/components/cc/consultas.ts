@@ -37,7 +37,7 @@ const VACIA = { dias_0_30: 0, dias_31_60: 0, dias_61_90: 0, dias_mas_90: 0, dias
 export async function listarCuentas(): Promise<CuentaDoctor[]> {
   const supabase = getSupabase();
   const [doctores, saldos, antiguedad] = await Promise.all([
-    supabase.from("doctores").select("*").eq("activo", true).order("nombre"),
+    supabase.from("doctores").select("*").order("nombre"),
     supabase.from("v_saldos_doctor").select("*"),
     supabase.from("v_antiguedad_deuda").select("*"),
   ]);
@@ -61,11 +61,15 @@ export async function listarCuentas(): Promise<CuentaDoctor[]> {
     });
   }
 
-  return ((doctores.data ?? []) as Doctor[]).map((doctor) => {
-    const saldo = porDoctor.get(doctor.id) ?? 0;
-    const antig = vencimientos.get(doctor.id) ?? VACIA;
-    return { doctor, saldo, antiguedad: antig, estado: estadoDeCuenta(saldo, antig.diasMasViejo) };
-  });
+  return ((doctores.data ?? []) as Doctor[])
+    .map((doctor) => {
+      const saldo = porDoctor.get(doctor.id) ?? 0;
+      const antig = vencimientos.get(doctor.id) ?? VACIA;
+      return { doctor, saldo, antiguedad: antig, estado: estadoDeCuenta(saldo, antig.diasMasViejo) };
+    })
+    // Un doctor dado de baja sigue apareciendo mientras su cuenta no esté en cero:
+    // la deuda no se puede esconder desactivando al doctor.
+    .filter((cuenta) => cuenta.doctor.activo || cuenta.saldo !== 0);
 }
 
 export function estadoDeCuenta(saldo: Centavos, diasMasViejo: number): EstadoCuenta {

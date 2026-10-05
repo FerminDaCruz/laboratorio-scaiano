@@ -1,6 +1,6 @@
 // Parámetros de impresión en un solo lugar.
-// TODO(E13): la impresora térmica todavía no está comprada. Cuando se sepa el
-// modelo hay que confirmar el ancho real del papel (58 u 80 mm) acá, y nada más.
+// La impresora del laboratorio es una 3nStar RPT005: papel de 80 mm, ESC/POS y USB.
+// Si alguna vez se cambia por una de 58 mm, se cambia acá y en ningún otro lado.
 
 export const ANCHO_TICKET_MM = 80;
 

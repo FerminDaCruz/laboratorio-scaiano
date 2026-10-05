@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useConsulta } from "@/hooks/use-consulta";
+import { formatNumero } from "@/lib/format";
 import { formatARS } from "@/lib/money";
 import { ETIQUETA_ESTADO } from "@/lib/tipos";
 
@@ -99,12 +100,12 @@ export default function TableroPage() {
         />
         <Tarjeta
           etiqueta="Órdenes en curso"
-          valor={String(enCurso)}
-          detalle={`${r.ordenesPorEstado.terminada} terminadas esperando entrega`}
+          valor={formatNumero(enCurso)}
+          detalle={`${formatNumero(r.ordenesPorEstado.terminada)} terminadas esperando entrega`}
         />
         <Tarjeta
           etiqueta="Atrasadas"
-          valor={String(r.ordenesAtrasadas)}
+          valor={formatNumero(r.ordenesAtrasadas)}
           detalle="Pasó la fecha comprometida"
           tono={r.ordenesAtrasadas > 0 ? "danger" : "ok"}
         />
@@ -159,7 +160,7 @@ export default function TableroPage() {
             <Tarjeta
               key={estado}
               etiqueta={ETIQUETA_ESTADO[estado]}
-              valor={String(r.ordenesPorEstado[estado])}
+              valor={formatNumero(r.ordenesPorEstado[estado])}
             />
           ))}
         </div>

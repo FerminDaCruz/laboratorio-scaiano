@@ -130,8 +130,10 @@ Base **14px**, no 16. Es una aplicación densa con tablas.
 **Números.** Toda columna numérica y todo monto lleva `font-variant-numeric: tabular-nums`
 y se alinea a la derecha. Sin excepción.
 
-**Mono** (`--font-mono`) solo para: números de OT, números de remito, códigos de
-trabajo, códigos de barras y el contenido de los documentos imprimibles.
+**Mono** (`--font-mono`) solo para: números de OT, números de remito, ficha del doctor,
+códigos de trabajo, códigos de barras y el contenido de los documentos imprimibles.
+Son identificadores que se leen y se dictan; el cero con punto de IBM Plex Mono evita
+confundirlo con la letra O.
 
 ---
 
@@ -238,6 +240,8 @@ Reglas:
 - Agrupar en secciones con `separator` y un título de sección de 11px en mayúsculas.
 - Los errores van **debajo del campo**, en `danger`, 12px. Nunca un toast para un error
   de validación.
+- Los campos obligatorios llevan un asterisco en `danger` pegado a la etiqueta, y al pie del
+  formulario va la aclaración "* Campos obligatorios". Los opcionales no se marcan.
 - Acciones abajo a la derecha: `Cancelar` (outline) y la primaria.
 - `Ctrl/Cmd + Enter` guarda desde cualquier campo.
 

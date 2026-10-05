@@ -167,7 +167,8 @@ docs/
 - **Notación FDI.** Cuadrante 1 = superior derecho del paciente (1.8→1.1), 2 = superior
   izquierdo, 3 = inferior izquierdo, 4 = inferior derecho. Temporales: cuadrantes 5-8.
   El campo de piezas debe aceptar cuatro formas: sin pieza, piezas sueltas, tramo
-  (un puente) y arcada completa.
+  (un puente) y arcada completa. Las sueltas y los tramos se pueden combinar en un mismo
+  ítem, separados por coma: `1.1,2.4-2.6`.
 - **Un remito agrupa varias OT** del mismo doctor. No es una por una.
 - **El precio del catálogo cambia con el tiempo.** El catálogo tiene historial con
   fecha de vigencia; la orden guarda el precio del día en que se cargó.

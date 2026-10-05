@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useConsulta } from "@/hooks/use-consulta";
+import { formatNumero } from "@/lib/format";
 import { formatARS } from "@/lib/money";
 
 const MESES = [
@@ -94,7 +95,7 @@ export default function ReportesPage() {
         <>
           <p className="flex items-baseline gap-3 text-xs text-ink-2">
             <span>
-              {consulta.datos.totalOrdenes}{" "}
+              {formatNumero(consulta.datos.totalOrdenes)}{" "}
               {consulta.datos.totalOrdenes === 1 ? "orden cargada" : "órdenes cargadas"} en{" "}
               {MESES[Number(mes) - 1].toLowerCase()}
             </span>
@@ -124,7 +125,7 @@ export default function ReportesPage() {
                     {consulta.datos.porObraSocial.map((fila) => (
                       <TableRow key={fila.obraSocial}>
                         <TableCell>{fila.obraSocial}</TableCell>
-                        <TableCell className="text-right tabular-nums">{fila.ordenes}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatNumero(fila.ordenes)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatARS(fila.total)}</TableCell>
                       </TableRow>
                     ))}
@@ -156,7 +157,7 @@ export default function ReportesPage() {
                       <TableRow key={fila.codigo}>
                         <TableCell className="font-mono">{fila.codigo}</TableCell>
                         <TableCell>{fila.titulo}</TableCell>
-                        <TableCell className="text-right tabular-nums">{fila.cantidad}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatNumero(fila.cantidad)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatARS(fila.total)}</TableCell>
                       </TableRow>
                     ))}

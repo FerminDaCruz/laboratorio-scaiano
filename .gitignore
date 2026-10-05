@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# fotos y escaneos de los papeles del laboratorio (datos personales)
+docs/fuentes/
+
+# seeds con datos personales (doctores reales)
+supabase/seed.*.local.sql

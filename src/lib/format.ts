@@ -29,6 +29,14 @@ export function formatHora(d: FechaEntrada): string {
   return format(aFecha(d), "HH:mm", { locale: es });
 }
 
+/**
+ * Separa los miles con punto: 1234567 → "1.234.567".
+ * No se usa para códigos (OT, remito, ficha), que van sin separadores.
+ */
+export function formatNumero(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 function correlativo(n: number): string {
   if (!Number.isSafeInteger(n) || n < 0) {
     throw new Error(`Número correlativo inválido: ${n}`);

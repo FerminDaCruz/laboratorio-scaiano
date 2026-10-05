@@ -444,3 +444,277 @@ Reglas:
 - El Supabase local sigue corriendo; se apaga con `npx supabase stop`
 
 ---
+
+### [2026-10-03] Interfaz · Separador de miles en los campos de monto
+
+**Hecho**
+- Campo de monto reutilizable que formatea mientras se escribe: `1234567,894` queda
+  `1.234.567,89`, alineado a la derecha y con `tabular-nums`
+- El cursor se mantiene donde estaba al editar en el medio del número, no salta al final
+- Se usa en los tres lugares donde se carga plata: precio nuevo de un trabajo, precio inicial
+  al crear un trabajo e importe del pago
+- Los conteos grandes (resultados del paginado, órdenes y cantidades de los reportes, cifras
+  del tablero) ahora también separan miles con `formatNumero`
+- 16 casos de prueba del formateo, incluido el ida y vuelta a centavos
+- Probado en el navegador en el precio de un trabajo y en el importe de un pago
+
+**Archivos**
+- `src/components/formulario/input-monto.tsx` — el campo
+- `src/lib/money.ts` — `formatearEntradaMonto`
+- `src/lib/format.ts` — `formatNumero`
+- `src/components/trabajos/panel-trabajo.tsx` · `src/app/pagos/page.tsx` — pasan a usarlo
+- `src/components/listado/pagina-listado.tsx` · `src/app/reportes/page.tsx` ·
+  `src/app/page.tsx` · `src/app/remitos/page.tsx` — conteos con separador
+
+**Decisiones**
+- Los códigos siguen sin separador: número de OT, de remito y ficha del doctor. Son
+  identificadores, no cantidades, y van en monoespaciada con ceros a la izquierda
+- La edad, la cantidad de un ítem y el porcentaje del aumento tampoco se formatean: son
+  números de dos o tres dígitos y el punto solo confundiría
+- El valor del campo sigue siendo texto; el paso a centavos lo sigue haciendo
+  `centavosDesdeTexto`, que ya aceptaba el formato con puntos
+
+---
+
+### [2026-10-03] Etapa E2 · Campos obligatorios y ficha con formato
+
+**Hecho**
+- Los campos obligatorios del formulario de doctor (ficha, nombre y fecha de alta) llevan
+  asterisco, y al pie está la aclaración "* Campos obligatorios"
+- La ficha de un doctor nuevo tiene que empezar con 100 y tener seis dígitos (100102, 100304):
+  se valida al guardar, con un mensaje que muestra el formato
+- Botón **Generar automático** en el alta: toma la última ficha con ese formato y suma uno.
+  Si todavía no hay ninguna, arranca en 100101
+- Los seeds pasaron a usar fichas 100101 a 100120, y las pruebas SQL se actualizaron
+- Probado en el navegador: el botón genera 100101, una ficha `55` se rechaza con el mensaje
+  del formato, y editar un doctor viejo (ficha 101) sigue guardando sin pedir renumerar
+
+**Archivos**
+- `src/components/formulario/campo.tsx` — `requerido` y `NotaCamposRequeridos`
+- `src/components/doctores/panel-doctor.tsx` · `src/components/doctores/datos.ts`
+- `supabase/seed.sql` · `supabase/tests/*.sql` · `docs/design-system.md` (§5C)
+
+**Decisiones**
+- El formato se valida **solo cuando la ficha cambia**: las fichas viejas, y las que traiga la
+  migración de E12 desde el Denture System, se editan sin tener que renumerarlas
+- La validación vive en el formulario y no como `check` en la base, justamente para no
+  bloquear la importación de E12. Si se quiere la garantía en la base, es una migración más
+- El generador no reserva el número: si dos personas lo piden a la vez, la segunda recibe el
+  error de ficha duplicada al guardar y vuelve a generar
+
+---
+
+### [2026-10-03] Etapa E3 · Corregir un precio ya cargado
+
+**Hecho**
+- Cargar un precio con una fecha que ya tiene precio ahora pregunta si se corrige, mostrando
+  el precio actual y el nuevo, en vez de fallar
+- Al confirmar, se corrige esa fila del historial: no se duplica ni se tocan las otras fechas
+- Los errores de Supabase se traducen a mensajes legibles (permisos, valor duplicado, sin
+  conexión) en vez del "revisá la conexión" genérico para todo
+
+**Archivos**
+- `supabase/migrations/20261003090000_precios_corregibles.sql` — política de update en `precios_trabajo`
+- `src/lib/errores.ts` — traducción de errores
+- `src/components/trabajos/datos.ts` · `panel-trabajo.tsx`
+
+**Decisiones**
+- Se mantiene una sola fila por fecha de vigencia: dos precios para el mismo día no significan
+  nada y romperían la pregunta "¿cuál era el precio ese día?"
+- Corregir el precio de una fecha no cambia ninguna orden ya cargada, porque la orden guarda
+  su propio precio congelado. Por eso es seguro permitirlo
+- `precios_trabajo` pasa a tener update, pero sigue sin delete: una fila cargada con la fecha
+  equivocada se corrige cargando la fecha correcta, no borrando
+
+**Pendiente**
+- Si hace falta borrar una fila de precio cargada con la fecha equivocada, hoy no se puede
+  desde la app
+
+---
+
+### [2026-10-03] Etapa E5 · Aviso cuando la cantidad no coincide con las piezas
+
+**Hecho**
+- En cada ítem de la orden, debajo de la fila, se muestra cuántas piezas quedaron elegidas
+- Si el trabajo tiene piezas sueltas o un tramo y la cantidad no coincide con esas piezas,
+  aparece un aviso en `warn`: "La cantidad dice 4 y elegiste 3 piezas…"
+- Probado en el navegador: 4 coronas con el tramo 2.4-2.6 muestran el aviso
+
+**Archivos**
+- `src/components/ordenes/formulario-orden.tsx`
+
+**Decisiones**
+- Es un aviso y no un error que bloquee: la regla "una pieza por unidad" vale para coronas,
+  incrustaciones y puente por elemento, pero no para una prótesis completa (cantidad 1 y una
+  arcada entera) ni para un modelo o una cubeta, que no llevan pieza
+- No se controla nada cuando la selección es una arcada completa o cuando no hay piezas
+- El aviso usa `warn` (estado, no decoración); el rojo de §5C queda para los errores que
+  impiden guardar
+
+**Pendiente**
+- Para que sea un error duro habría que marcar en el catálogo qué trabajos se hacen pieza por
+  pieza (una columna `por_pieza` en `trabajos`). Queda a decisión del usuario
+
+---
+
+### [2026-10-03] Etapa E9 · Un doctor dado de baja no esconde su deuda
+
+**Hecho**
+- Cuenta corriente dejaba afuera a los doctores inactivos, así que dar de baja a un doctor
+  hacía desaparecer su deuda de la pantalla donde se la busca. Ahora se muestran siempre que
+  su saldo no esté en cero, con la aclaración "· inactivo" al lado del nombre
+- Al apagar "Doctor activo" en la ficha, si el doctor tiene saldo aparece un aviso que dice
+  cuánto debe (o cuánto tiene a favor) y qué implica la baja. Es un aviso, no un bloqueo
+- Probado en el navegador con un saldo de prueba, que después se borró
+
+**Archivos**
+- `src/components/cc/consultas.ts` · `src/app/cuenta-corriente/page.tsx`
+- `src/components/doctores/datos.ts` — `saldoDeDoctor`
+- `src/components/doctores/panel-doctor.tsx` — el aviso
+
+**Decisiones**
+- La baja sigue siendo lógica y sin bloqueos: lo que cambia es que la información no se
+  esconde. Un doctor inactivo con saldo cero sí desaparece de Cuenta corriente
+- Lo que la baja sigue haciendo: el doctor no aparece en los combos, así que no se le pueden
+  cargar órdenes, remitos ni pagos nuevos
+
+---
+
+### [2026-10-03] Datos reales · El reset carga el catálogo y los doctores de verdad
+
+**Hecho**
+- `supabase/seed.sql` pasó a tener los datos reales: 64 trabajos con los códigos cortos
+  asignados a partir del nombre (CMC, BAN4, FRZR25…) y 52 precios de la lista de marzo de 2026
+- Los importes del papel estaban en miles: 150 se cargó como $ 150.000
+- Los 66 odontólogos del listado quedaron en `supabase/seed.doctores.local.sql`, que **no se
+  versiona**, y `config.toml` carga `./seed.*.local.sql` en cada `db reset`
+- `supabase db reset` deja la base siempre igual: 66 doctores, 64 trabajos, 52 con precio,
+  5 obras sociales. Verificado, y las cuatro suites SQL pasan sobre esa base
+- Las pruebas pasaron a usar fichas y códigos que existen de verdad (100101, 100103, CMC, CZRM)
+- El script de usuario local ahora también actualiza la contraseña si el usuario ya existía
+- Probado en el navegador: el listado muestra los doctores reales con sus fichas 100xxx
+
+**Archivos**
+- `supabase/seed.sql` — catálogo real, sin datos personales, va a git
+- `supabase/seed.doctores.local.sql` — odontólogos, fuera de git
+- `supabase/config.toml` · `.gitignore` · `supabase/tests/*.sql` · `supabase/crear-usuario-local.sh`
+
+**Decisiones**
+- Los datos personales de los odontólogos no viajan en el repositorio: van en un seed aparte
+  que el reset carga igual. Si se prefiere tener todo en git, se mueve el contenido a `seed.sql`
+- Como el listado no trae fecha de alta, se usa la del reporte (25/02/2026) para que el reset
+  sea siempre idéntico
+- Las localidades quedan como en el papel: "Bariloche" y "San Carlos de Bariloche" conviven
+- El piso y el departamento quedan dentro del domicilio, porque las columnas Ps y Dto del
+  listado están vacías
+- Los trabajos sin precio en el papel se cargan igual, sin precio: aparecen en el catálogo pero
+  el sistema no deja usarlos en una orden hasta que se les cargue uno
+- OPAM, Puridént y Dental Bariloche son clínicas: no se cargaron como doctores
+
+**Pendiente**
+- Falta la columna de precios que quedó cortada a la derecha de las fotos (parece otro mes)
+- Las obras sociales siguen siendo las cinco de prueba: el listado en papel no trae esa columna
+- Tres odontólogos anotados a mano (Iturrieta, Volpi y Painemil) no se cargaron: no tienen ficha
+- Hay teléfonos y apellidos marcados con ⚠️ en la transcripción, para verificar contra el papel
+
+---
+
+### [2026-10-03] Fuentes · Fotos del laboratorio leídas
+
+**Hecho**
+- Se leyeron las cinco fotos de `docs/fuentes/`: la etiqueta de la impresora, dos páginas del
+  listado de odontólogos y dos de la lista de precios
+- **La impresora ya está**: 3nStar RPT005, papel de **80 mm**, 200 mm/s, RS232 + USB, ESC/POS
+  y cajón de dinero. El sistema ya estaba configurado en 80 mm, así que no hubo que cambiar nada
+- La transcripción del listado de odontólogos (67 fichas, de 100089 a 100308) quedó en
+  `docs/fuentes/transcripcion-odontologos.md`
+- La transcripción de la lista de precios de marzo de 2026 quedó en
+  `docs/fuentes/transcripcion-precios.md`
+- El listado confirma el formato de ficha: todas son 100xxx, igual que la regla que se cargó
+  en el formulario de doctores
+
+**Archivos**
+- `docs/fuentes/transcripcion-odontologos.md` · `transcripcion-precios.md` — fuera de git
+- `docs/pendientes-externos.md` — la impresora pasa de bloqueante a resuelta, con sus datos
+- `docs/etapas.md` — E13 ya solo espera la lectora de códigos
+- `src/lib/impresion.ts` — el comentario deja de decir que falta saber el modelo
+
+**Decisiones**
+- Las transcripciones viven en `docs/fuentes/`, que está fuera de git, porque tienen nombres,
+  domicilios y teléfonos de gente real
+- No se cargó todavía nada en los seeds: las dos listas están incompletas y los importes
+  escritos a mano necesitan confirmación
+
+**Pendiente / bloqueado**
+- Falta la parte del listado entre la H y la K (al menos Iturrieta, que figura a mano)
+- De la lista de precios faltan las letras D a M, la columna de la derecha que quedó cortada
+  y lo que siga después de "Teflón"
+- Hay que confirmar si los precios están en miles de pesos
+- Los trabajos del papel no tienen código corto y el sistema necesita uno por trabajo
+- Sigue faltando la lectora de códigos de barras para cerrar E13
+
+---
+
+### [2026-10-03] Etapa E4 · Sueltas y tramos combinados
+
+**Hecho**
+- Una selección ahora puede tener piezas sueltas y tramos a la vez: `1.1,2.4-2.6`
+- El campo acepta cualquier orden y con o sin espacios (`2.4-2.6, 1.1`), y lo deja ordenado
+  como se ve en la boca
+- En la grilla, elegir un tramo se suma a lo que ya estaba; clickear una pieza que está
+  dentro de un tramo saca ese tramo entero
+- Cambiar de modo (sueltas ↔ tramo) ya no borra lo elegido
+- 47 casos de prueba, incluidos los valores viejos: `1.8,2.4` y `2.4-2.6` se siguen leyendo igual
+- Probado en el navegador: `2.4-2.6, 1.1` queda `1.1, 2.4-2.6` con cuatro piezas resaltadas,
+  y agregando el tramo 4.4-4.6 con el mouse queda `1.1,2.4-2.6,4.4-4.6`
+
+**Archivos**
+- `src/lib/fdi.ts` — el valor pasa a ser una lista de partes (pieza o tramo)
+- `src/components/odontograma/odontograma.tsx` — el modo es de edición, no del valor
+- `src/components/ordenes/formulario-orden.tsx` — el conteo de piezas usa las partes
+- `CLAUDE.md` y `docs/etapas.md` — la regla de dominio dice que se pueden combinar
+
+**Decisiones**
+- El formato guardado no cambió para los valores que ya existían: `1.8,2.4` ahora se lee como
+  dos partes sueltas y `2.4-2.6` como un tramo, sin migrar nada
+- Las puntas de un tramo se guardan ordenadas por número de pieza ("4.5-4.7"), que es como se
+  dicta, aunque en la arcada inferior el dibujo vaya al revés (4.8 → 4.1)
+- Una pieza suelta que queda adentro de un tramo se descarta: la selección no repite piezas
+- La arcada completa sigue siendo excluyente: ya incluye todas las piezas de esa arcada
+
+---
+
+### [2026-10-03] Etapa E4 · Un solo campo de piezas por ítem
+
+**Hecho**
+- Al desplegar el odontograma dentro de una orden ya no aparece un segundo campo de piezas:
+  queda el de la fila, y abajo solo los modos, la grilla y la casilla de temporales
+- El componente tiene una prop `mostrarCampo` para eso; en la página de prueba y en cualquier
+  uso suelto sigue trayendo su propio campo
+- Probado en el navegador: se tipea `2.4-2.6` en la fila, se despliega la grilla y quedan
+  resaltadas 24, 25 y 26, con un único campo de texto
+
+**Archivos**
+- `src/components/odontograma/odontograma.tsx` · `src/components/ordenes/formulario-orden.tsx`
+
+**Decisiones**
+- Era un error de armado, no una función: el campo compacto de la fila y el odontograma
+  completo escriben el mismo valor, así que se veían dos campos iguales uno encima del otro
+- Se dejó el campo en la fila (y no el del odontograma) para que no cambie de lugar al
+  desplegar y el foco del teclado quede siempre en el mismo sitio
+
+---
+
+### [2026-10-03] Design system · La ficha del doctor usa monoespaciada
+
+**Hecho**
+- §2 suma la ficha del doctor a la lista de lo que va en `--font-mono`, que ya era lo que
+  hacía el código en el formulario, los listados de doctores y cuenta corriente, el panel
+  del doctor y el ranking del tablero
+
+**Decisiones**
+- La ficha es un identificador que se lee y se dicta, igual que la OT y el remito: el cero
+  con punto de IBM Plex Mono evita confundirlo con la letra O, y las columnas de códigos
+  quedan alineadas entre sí
+
+---

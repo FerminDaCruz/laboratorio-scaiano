@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConsulta } from "@/hooks/use-consulta";
-import { formatFechaCorta, formatRemito } from "@/lib/format";
+import { formatFechaCorta, formatNumero, formatRemito } from "@/lib/format";
 import { formatARS } from "@/lib/money";
 import type { Doctor } from "@/lib/tipos";
 
@@ -41,7 +41,7 @@ export default function RemitosPage() {
     { clave: "numero", titulo: "Remito", mono: true, ancho: "w-28", render: (r) => formatRemito(r.numero) },
     { clave: "fecha", titulo: "Fecha", ancho: "w-24", render: (r) => formatFechaCorta(r.fecha) },
     { clave: "doctor", titulo: "Doctor", render: (r) => r.doctor?.nombre ?? "—" },
-    { clave: "lineas", titulo: "Órdenes", numerica: true, ancho: "w-24", render: (r) => r.lineas },
+    { clave: "lineas", titulo: "Órdenes", numerica: true, ancho: "w-24", render: (r) => formatNumero(r.lineas) },
     { clave: "total", titulo: "Total", numerica: true, ancho: "w-36", render: (r) => formatARS(r.total) },
     {
       clave: "estado",

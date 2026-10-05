@@ -6,21 +6,33 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  agregarTramo,
+  alternarPieza,
   arcadaDePieza,
   describirPiezas,
   esTemporal,
   parsearEntradaPiezas,
   parsearPiezas,
-  piezasDelTramo,
   piezasSeleccionadas,
   secuenciaArcada,
   serializarPiezas,
+  SIN_PIEZAS,
   type Arcada,
   type Piezas,
 } from "@/lib/fdi";
 import { cn } from "@/lib/utils";
 
-type Modo = Piezas["modo"];
+/**
+ * Modo de edición. No es el valor: una selección puede tener piezas sueltas y
+ * tramos a la vez, y el modo solo dice cómo se agrega lo siguiente.
+ */
+type Modo = "ninguna" | "sueltas" | "tramo" | "arcada";
+
+function modoDeValor(valor: Piezas, actual: Modo = "ninguna"): Modo {
+  if (valor.modo === "arcada") return "arcada";
+  if (valor.modo === "partes") return actual === "tramo" ? "tramo" : "sueltas";
+  return actual === "tramo" || actual === "sueltas" ? actual : "ninguna";
+}
 
 const MODOS: { valor: Modo; etiqueta: string }[] = [
   { valor: "ninguna", etiqueta: "Sin pieza" },
@@ -44,6 +56,7 @@ export function Odontograma({
   valor,
   onCambio,
   compacto = false,
+  mostrarCampo = true,
 }: {
   id?: string;
   /** Valor serializado, tal como se guarda en orden_items.piezas. */
@@ -51,11 +64,13 @@ export function Odontograma({
   onCambio: (valor: string | null) => void;
   /** Solo el campo tipeable, sin modos ni grilla: para filas de una orden. */
   compacto?: boolean;
+  /** Oculta el campo de texto, cuando ya hay uno al lado que escribe el mismo valor. */
+  mostrarCampo?: boolean;
 }) {
   const piezas = parsearPiezas(valor);
   const seleccionadas = piezasSeleccionadas(piezas);
 
-  const [modo, setModo] = useState<Modo>(piezas.modo);
+  const [modo, setModo] = useState<Modo>(() => modoDeValor(piezas));
   const [temporales, setTemporales] = useState(() => seleccionadas.some(esTemporal));
   const [texto, setTexto] = useState(() => describirPiezas(piezas));
   const [error, setError] = useState<string>();
@@ -67,7 +82,7 @@ export function Odontograma({
     if (ultimoValor.current === valor) return;
     ultimoValor.current = valor;
     const nuevo = parsearPiezas(valor);
-    setModo(nuevo.modo);
+    setModo((actual) => modoDeValor(nuevo, actual));
     setTexto(describirPiezas(nuevo));
     setError(undefined);
     setExtremo(null);
@@ -76,7 +91,7 @@ export function Odontograma({
   function emitir(nuevo: Piezas) {
     const serializado = serializarPiezas(nuevo);
     ultimoValor.current = serializado;
-    setModo(nuevo.modo);
+    setModo((actual) => modoDeValor(nuevo, actual));
     setTexto(describirPiezas(nuevo));
     setError(undefined);
     onCambio(serializado);
@@ -84,23 +99,14 @@ export function Odontograma({
 
   function cambiarModo(nuevo: Modo) {
     setExtremo(null);
+    setError(undefined);
+
     if (nuevo === "ninguna") {
-      emitir({ modo: "ninguna" });
+      emitir(SIN_PIEZAS);
       return;
     }
-    if (nuevo === "sueltas") {
-      const actuales = piezas.modo === "sueltas" ? piezas.piezas : seleccionadas;
-      emitir(actuales.length > 0 ? { modo: "sueltas", piezas: actuales } : { modo: "ninguna" });
-      setModo("sueltas");
-      return;
-    }
+    // Los otros modos no borran lo elegido: cambian cómo se agrega lo que sigue.
     setModo(nuevo);
-    if (piezas.modo !== nuevo) {
-      // Se avisa que ya no hay selección, sin que el efecto de arriba pise el modo.
-      ultimoValor.current = null;
-      setTexto("");
-      onCambio(null);
-    }
   }
 
   function clickPieza(pieza: string) {
@@ -116,29 +122,27 @@ export function Odontograma({
         setError(undefined);
         return;
       }
-      if (piezasDelTramo(extremo, pieza).length === 0) {
+      const conTramo = agregarTramo(piezas, extremo, pieza);
+      if (!conTramo) {
         setExtremo(pieza);
         setError("Un tramo va entre piezas de la misma arcada.");
         return;
       }
       setExtremo(null);
-      emitir({ modo: "tramo", desde: extremo, hasta: pieza });
+      emitir(conTramo);
       return;
     }
 
-    // "ninguna" y "sueltas": clickear una pieza la agrega o la saca.
-    const actuales = piezas.modo === "sueltas" ? piezas.piezas : [];
-    const nuevas = actuales.includes(pieza)
-      ? actuales.filter((p) => p !== pieza)
-      : [...actuales, pieza];
-    emitir(nuevas.length === 0 ? { modo: "ninguna" } : { modo: "sueltas", piezas: nuevas });
-    if (nuevas.length > 0) setModo("sueltas");
+    // "ninguna" y "sueltas": clickear una pieza la agrega o la saca. Si la pieza
+    // estaba dentro de un tramo, se saca el tramo entero.
+    emitir(alternarPieza(piezas, pieza));
+    setModo("sueltas");
   }
 
   function confirmarTexto() {
     const interpretado = parsearEntradaPiezas(texto);
     if (!interpretado) {
-      setError("No se entiende. Probá 1.8, 2.4-2.6 o arcada sup.");
+      setError("No se entiende. Probá 1.1, 2.4-2.6 o arcada sup.");
       return;
     }
     emitir(interpretado);
@@ -147,12 +151,13 @@ export function Odontograma({
 
   return (
     <div className="flex flex-col gap-3">
+      {mostrarCampo && (
       <Input
         id={id}
         value={texto}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
-        placeholder="1.8 · 2.4-2.6 · arcada sup."
+        placeholder="1.1, 2.4-2.6 · arcada sup."
         className="font-mono"
         onChange={(e) => {
           setTexto(e.target.value);
@@ -166,7 +171,8 @@ export function Odontograma({
           confirmarTexto();
         }}
       />
-      {error && (
+      )}
+      {mostrarCampo && error && (
         <p id={`${id}-error`} className="text-xs text-danger">
           {error}
         </p>
@@ -201,7 +207,9 @@ export function Odontograma({
 
         {modo === "tramo" && (
           <span className="text-xs text-ink-3">
-            {extremo ? `Desde ${extremo}: elegí la otra punta.` : "Elegí las dos puntas del tramo."}
+            {extremo
+              ? `Desde ${extremo}: elegí la otra punta.`
+              : "Elegí las dos puntas del tramo. Se suma a lo que ya esté elegido."}
           </span>
         )}
       </div>

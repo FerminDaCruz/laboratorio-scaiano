@@ -1,11 +1,17 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { AccionesFormulario, Campo, Dato, SeccionFormulario } from "@/components/formulario/campo";
+import {
+  AccionesFormulario,
+  Campo,
+  Dato,
+  NotaCamposRequeridos,
+  SeccionFormulario,
+} from "@/components/formulario/campo";
 import { SelectSimple } from "@/components/formulario/select-simple";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,15 +20,33 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
+import { useConsulta } from "@/hooks/use-consulta";
 import { formatFechaCorta } from "@/lib/format";
+import { formatARS, type Centavos } from "@/lib/money";
 import type { Doctor, ObraSocial } from "@/lib/tipos";
-import { CODIGO_DUPLICADO, guardarDoctor } from "./datos";
+import {
+  CODIGO_DUPLICADO,
+  fichaConFormato,
+  guardarDoctor,
+  proximaFichaLibre,
+  saldoDeDoctor,
+} from "./datos";
 
-const esquema = z.object({
+/**
+ * La ficha de un doctor nuevo empieza con 100 y tiene seis dígitos. Las fichas
+ * viejas (las que ya existían o las que venga a traer la migración de E12) se
+ * dejan como están: solo se valida el formato cuando el número cambia.
+ */
+function crearEsquema(fichaOriginal: number | null) {
+  return z.object({
   ficha: z.coerce
     .number({ invalid_type_error: "La ficha tiene que ser un número." })
     .int("La ficha tiene que ser un número entero.")
-    .positive("La ficha tiene que ser mayor que cero."),
+    .positive("La ficha tiene que ser mayor que cero.")
+    .refine(
+      (valor) => valor === fichaOriginal || fichaConFormato(valor),
+      "La ficha empieza con 100 y tiene seis dígitos, por ejemplo 100102.",
+    ),
   nombre: z.string().trim().min(1, "Ingresá el nombre."),
   domicilio: z.string().trim(),
   piso: z.string().trim(),
@@ -33,9 +57,10 @@ const esquema = z.object({
   fecha_alta: z.string().min(1, "Ingresá la fecha de alta."),
   activo: z.boolean(),
   notas: z.string().trim(),
-});
+  });
+}
 
-type Formulario = z.infer<typeof esquema>;
+type Formulario = z.infer<ReturnType<typeof crearEsquema>>;
 
 const VACIO: Formulario = {
   ficha: "" as unknown as number,
@@ -188,16 +213,45 @@ function FormularioDoctor({
   onCancelar: () => void;
   onGuardado: () => void;
 }) {
+  const esquema = useMemo(() => crearEsquema(doctor?.ficha ?? null), [doctor]);
+  const [generando, setGenerando] = useState(false);
+
+  // Para avisar si se está dando de baja a un doctor que debe plata.
+  const { consulta: consultaSaldo } = useConsulta<Centavos>(
+    () => (doctor ? saldoDeDoctor(doctor.id) : Promise.resolve(0)),
+    [doctor?.id],
+    "No se pudo consultar el saldo del doctor.",
+  );
+  const saldo = consultaSaldo.estado === "listo" ? consultaSaldo.datos : 0;
+
   const {
     register,
     handleSubmit,
     control,
     setError,
+    setValue,
+    clearErrors,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<Formulario>({
     resolver: zodResolver(esquema),
     defaultValues: doctor ? aFormulario(doctor) : VACIO,
   });
+
+  async function generarFicha() {
+    setGenerando(true);
+    try {
+      const ficha = await proximaFichaLibre();
+      setValue("ficha", ficha, { shouldDirty: true });
+      clearErrors("ficha");
+    } catch {
+      toast.error("No se pudo generar el número de ficha. Revisá la conexión y probá de nuevo.", {
+        duration: Infinity,
+      });
+    } finally {
+      setGenerando(false);
+    }
+  }
 
   async function guardar(datos: Formulario) {
     try {
@@ -230,6 +284,8 @@ function FormularioDoctor({
     }
   }
 
+  const sigueActivo = watch("activo");
+
   const opcionesObra = [
     { valor: "", etiqueta: "Sin obra social" },
     ...obrasSociales.map((o) => ({ valor: String(o.id), etiqueta: o.nombre })),
@@ -244,20 +300,34 @@ function FormularioDoctor({
     >
       <SeccionFormulario titulo="Ficha" primera>
         <div className="flex flex-col gap-3">
-          <Campo id="ficha" etiqueta="Número de ficha" error={errors.ficha?.message}>
-            <Input
-              id="ficha"
-              inputMode="numeric"
-              autoFocus
-              aria-invalid={errors.ficha ? true : undefined}
-              {...register("ficha")}
-            />
+          <Campo
+            id="ficha"
+            etiqueta="Número de ficha"
+            requerido
+            error={errors.ficha?.message}
+            ayuda="Empieza con 100 y tiene seis dígitos, por ejemplo 100102."
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="ficha"
+                inputMode="numeric"
+                autoFocus
+                className="w-40 font-mono"
+                aria-invalid={errors.ficha ? true : undefined}
+                {...register("ficha")}
+              />
+              {doctor === null && (
+                <Button type="button" variant="outline" onClick={generarFicha} disabled={generando}>
+                  {generando ? "Generando…" : "Generar automático"}
+                </Button>
+              )}
+            </div>
           </Campo>
-          <Campo id="nombre" etiqueta="Nombre" error={errors.nombre?.message}>
+          <Campo id="nombre" etiqueta="Nombre" requerido error={errors.nombre?.message}>
             <Input id="nombre" aria-invalid={errors.nombre ? true : undefined} {...register("nombre")} />
           </Campo>
-          <Campo id="fecha_alta" etiqueta="Fecha de alta" error={errors.fecha_alta?.message}>
-            <Input id="fecha_alta" type="date" {...register("fecha_alta")} />
+          <Campo id="fecha_alta" etiqueta="Fecha de alta" requerido error={errors.fecha_alta?.message}>
+            <Input id="fecha_alta" type="date" className="w-48" {...register("fecha_alta")} />
           </Campo>
         </div>
       </SeccionFormulario>
@@ -319,8 +389,25 @@ function FormularioDoctor({
               Doctor activo
             </label>
           </div>
+
+          {!sigueActivo && saldo > 0 && (
+            <p className="text-xs text-warn">
+              Este doctor tiene {formatARS(saldo)} de deuda. Si lo das de baja no vas a poder
+              cargarle órdenes nuevas, pero su cuenta corriente se sigue viendo hasta que quede
+              en cero.
+            </p>
+          )}
+
+          {!sigueActivo && saldo < 0 && (
+            <p className="text-xs text-warn">
+              Este doctor tiene {formatARS(-saldo)} a favor. Si lo das de baja, ese saldo queda
+              ahí hasta que se use o se devuelva.
+            </p>
+          )}
         </div>
       </SeccionFormulario>
+
+      <NotaCamposRequeridos />
 
       <AccionesFormulario onCancelar={onCancelar} guardando={isSubmitting} />
     </form>

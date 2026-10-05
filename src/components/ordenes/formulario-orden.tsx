@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
-import { formatPieza } from "@/lib/fdi";
+import { formatPieza, parsearPiezas, piezasSeleccionadas } from "@/lib/fdi";
 import { formatOT } from "@/lib/format";
 import { formatARS } from "@/lib/money";
 import { COLORES_VITA, type Doctor, type ObraSocial, type TrabajoConPrecio } from "@/lib/tipos";
@@ -356,6 +356,15 @@ function FilaItem({
   const subtotal = trabajo?.precio && Number.isInteger(cantidad) ? trabajo.precio * cantidad : null;
   const erroresItem = errors.items?.[indice];
 
+  // Para los trabajos que se hacen pieza por pieza, la cantidad y las piezas elegidas
+  // tienen que dar lo mismo. No aplica a una arcada completa ni a un trabajo sin pieza
+  // (una prótesis completa es cantidad 1 y una arcada entera).
+  const piezas = parsearPiezas(item?.piezas);
+  const piezasElegidas =
+    piezas.modo === "partes" ? piezasSeleccionadas(piezas).length : null;
+  const noCoinciden =
+    piezasElegidas !== null && Number.isInteger(cantidad) && cantidad > 0 && piezasElegidas !== cantidad;
+
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -461,6 +470,7 @@ function FilaItem({
           render={({ field }) => (
             <Odontograma
               id={`items.${indice}.piezas.grilla`}
+              mostrarCampo={false}
               valor={field.value}
               onCambio={field.onChange}
             />
@@ -469,7 +479,18 @@ function FilaItem({
       )}
 
       {!abierto && item?.piezas && (
-        <p className="text-xs text-ink-3">Piezas: {formatPieza(item.piezas)}</p>
+        <p className="text-xs text-ink-3">
+          Piezas: {formatPieza(item.piezas)}
+          {piezasElegidas !== null && ` · ${piezasElegidas} ${piezasElegidas === 1 ? "pieza" : "piezas"}`}
+        </p>
+      )}
+
+      {noCoinciden && (
+        <p className="text-xs text-warn">
+          La cantidad dice {cantidad} y elegiste {piezasElegidas}{" "}
+          {piezasElegidas === 1 ? "pieza" : "piezas"}. Si es un trabajo que se hace pieza por
+          pieza, revisá antes de guardar.
+        </p>
       )}
     </div>
   );

@@ -115,7 +115,8 @@ delicada de la interfaz, por eso va sola.
   3 inferior izquierdo, 4 inferior derecho
 - Soporte de temporales (cuadrantes 5-8), activable
 - **Cuatro modos de selección:** sin pieza · piezas sueltas · tramo (puente) ·
-  arcada completa (superior, inferior o ambas)
+  arcada completa (superior, inferior o ambas). Sueltas y tramos se combinan en una misma
+  selección, separados por coma
 - Clickeable **y** tipeable: escribir `2.4-2.6` selecciona el tramo
 - Serialización estable a un solo campo, y helpers de formato en `src/lib/fdi.ts`
 
@@ -272,10 +273,12 @@ quedó el sistema viejo — **no arrancar en 1**.
 
 ## E13 · Impresión física · 🔒 BLOQUEADA
 
-**Bloqueada por:** no hay impresora ni lectora todavía.
+**Bloqueada por:** falta la lectora de códigos de barras. La impresora ya está: es una
+3nStar RPT005 de 80 mm con ESC/POS (ver `docs/pendientes-externos.md`), y el sistema ya
+está configurado con ese ancho.
 
-Cuando se destrabe: ancho real del ticket, Chrome en `--kiosk-printing`, y agente
-ESC/POS solo si hace falta corte automático de papel.
+Lo que queda: imprimir en papel para ajustar la comanda y el remito, Chrome en
+`--kiosk-printing`, y agente ESC/POS solo si hace falta corte automático.
 
 Mientras tanto, E7 y E8 generan los documentos en pantalla y PDF, que es suficiente
 para trabajar y para mostrárselos a Damián.
