@@ -21,3 +21,25 @@ export function getSupabase(): SupabaseClient<Database> {
   cliente = createClient<Database>(url, anonKey);
   return cliente;
 }
+
+/**
+ * Llama a una función que todavía no figura en `database.types.ts`.
+ *
+ * TODO(E14): borrar cuando se apliquen las migraciones nuevas en la base y se
+ * regeneren los tipos con `supabase gen types typescript`.
+ */
+export async function rpcNueva<T>(
+  nombre: string,
+  argumentos: Record<string, unknown>,
+): Promise<T> {
+  const cliente = getSupabase() as unknown as {
+    rpc: (
+      n: string,
+      a: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message?: string; code?: string } | null }>;
+  };
+
+  const { data, error } = await cliente.rpc(nombre, argumentos);
+  if (error) throw error;
+  return data as T;
+}

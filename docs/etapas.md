@@ -261,6 +261,29 @@ Lo que Damián hoy no tiene y le va a hacer sentir que valió la pena.
 
 ---
 
+## E14 · Ajustes y correcciones
+
+**Depende de:** E5, E8 · **Paralelo con:** nada
+
+Lo que pidió el laboratorio después de probar el sistema. El libro mayor sigue sin editarse:
+corregir un remito emitido es anularlo y rehacerlo.
+
+- Precio por ítem editable: el catálogo propone, el laboratorio puede acordar otro
+- `editar_orden`: cambiar trabajos, cantidades, piezas y datos mientras la orden no esté facturada
+- `anular_orden`: solo un administrador, y solo si la orden no entró en un remito
+- Descuento o recargo al emitir el remito, con motivo, que sale impreso en el ticket
+- **Facturar** desde la orden, además de la bandeja de escaneo
+- Acciones de estado visibles en el listado, con vuelta atrás
+- **Corregir remito**: lo anula y vuelve a la bandeja con las mismas OT
+
+**Archivos:** `supabase/migrations/*_ajustes_y_correcciones.sql` · `src/app/ordenes/editar/**` ·
+`src/components/ordenes/**` · `src/app/remitos/nuevo/**` · `src/components/remitos/**`
+
+**Terminado cuando:** se puede cargar una orden con un precio acordado, editarla, anularla
+siendo admin, emitir un remito con descuento y corregirlo.
+
+---
+
 ## E12 · Migración de datos · 🔒 BLOQUEADA
 
 **Bloqueada por:** no se conoce el formato de la base del Denture System.

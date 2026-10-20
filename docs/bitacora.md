@@ -557,6 +557,71 @@ Reglas:
 
 ---
 
+### [2026-10-19] Etapa E8 · El remito lleva el domicilio del doctor
+
+**Hecho**
+- El remito imprime, debajo del nombre del doctor, su domicilio con piso y departamento y
+  la localidad. Es el papel que lleva el cadete al entregar
+- Las consultas de remitos traen esos campos; si el doctor no tiene domicilio cargado, no
+  se imprime ninguna línea vacía
+
+**Archivos**
+- `src/components/documentos/remito.tsx` · `src/components/remitos/consultas.ts`
+
+**Decisiones**
+- El domicilio va con sangría debajo del nombre, para que se lea como un bloque de entrega
+  y no se confunda con los trabajos
+- La comanda no cambia: es el papel que acompaña al trabajo dentro del laboratorio
+
+**Pendiente**
+- Sin probar en pantalla: Docker sigue apagado
+
+---
+
+### [2026-10-19] Etapa E14 · Ajustes, correcciones y acciones visibles
+
+Nace de la devolución de Damián después de probar la aplicación desplegada: no encontraba
+cómo facturar ni los botones de estado, y necesitaba poder cambiar importes.
+
+**Hecho**
+- Precio por ítem editable en la orden: el catálogo lo propone y se puede pisar con el
+  precio acordado (un descuento o un plus). Si se cambia, el campo muestra el de catálogo
+- `editar_orden`: cambia trabajos, cantidades, piezas, precios y datos del paciente mientras
+  la orden no esté facturada. Pantalla nueva en `/ordenes/editar?ot=N`
+- `anular_orden`: solo administradores, solo si la orden no entró en un remito, con motivo
+- La pantalla ya no puede poner una orden en "entregada" ni "anulada" a mano: eso lo hacen
+  las funciones
+- `emitir_remito` acepta un descuento o un recargo con motivo; el documento lo imprime como
+  subtotal, descuento y total
+- **Facturar** desde el panel de la orden y desde el listado, además de la bandeja de escaneo
+- Acciones visibles en cada fila del listado, con tooltip, y vuelta atrás de estado en el panel
+- **Corregir remito**: lo anula (contra-asiento) y vuelve a la bandeja con las mismas OT
+- Suite de pruebas nueva en `supabase/tests/ajustes.sql`, con 12 comprobaciones
+
+**Archivos**
+- `supabase/migrations/20261019090000_ajustes_y_correcciones.sql`
+- `src/app/ordenes/editar/page.tsx` · `src/components/ordenes/formulario-orden.tsx` ·
+  `panel-orden.tsx` · `datos.ts` · `src/app/ordenes/page.tsx`
+- `src/app/remitos/nuevo/page.tsx` · `src/components/remitos/consultas.ts` ·
+  `panel-remito.tsx` · `src/components/documentos/remito.tsx`
+- `src/lib/supabase.ts` — `rpcNueva`, temporal
+- `CLAUDE.md` y `docs/etapas.md` — la regla del precio y la etapa nueva
+
+**Decisiones**
+- El precio del catálogo pasa a ser el valor por defecto y no una imposición: si quien carga
+  escribe otro, se congela ese. La regla de CLAUDE.md se actualizó para decir eso
+- Corregir un remito emitido es anularlo y rehacerlo, no editarlo: es lo que el laboratorio
+  ya hacía a mano y lo único que deja los saldos cerrados
+- Anular órdenes queda para administradores; cambiar el estado de producción, para todos
+- El descuento o recargo exige un motivo: sin eso, un número suelto en el ticket no se explica
+
+**Pendiente / bloqueado**
+- Docker estaba apagado: la migración no se aplicó y `supabase/tests/ajustes.sql` no se corrió
+- Falta regenerar `database.types.ts` y borrar el ayudante `rpcNueva` de `src/lib/supabase.ts`
+- Falta probar las pantallas nuevas en el navegador
+
+---
+
 ### [2026-10-05] Etapa E0 · Modo demo: entrar sin pantalla de login
 
 **Hecho**

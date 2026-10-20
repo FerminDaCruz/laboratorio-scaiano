@@ -1,11 +1,24 @@
 import { FILAS_POR_PAGINA } from "@/components/listado/pagina-listado";
-import { centavosDesdeNumeric, type Centavos } from "@/lib/money";
-import { getSupabase } from "@/lib/supabase";
+import { centavosDesdeNumeric, numericParaPostgres, type Centavos } from "@/lib/money";
+import { getSupabase, rpcNueva } from "@/lib/supabase";
 import type { Orden, Remito } from "@/lib/tipos";
 
+/** Los datos del doctor que salen impresos en el remito, para la entrega. */
+export type DoctorDelRemito = {
+  nombre: string;
+  ficha: number;
+  domicilio: string | null;
+  piso: string | null;
+  departamento: string | null;
+  localidad: string | null;
+};
+
 export type RemitoConDoctor = Remito & {
-  doctor: { nombre: string; ficha: number } | null;
+  doctor: DoctorDelRemito | null;
   lineas: number;
+  /** Descuento (negativo) o recargo (positivo) aplicado al emitir. */
+  ajuste: Centavos;
+  ajuste_motivo: string | null;
 };
 
 export type LineaRemito = {
@@ -21,7 +34,10 @@ export async function listarRemitos(
 ): Promise<{ filas: RemitoConDoctor[]; total: number }> {
   let consulta = getSupabase()
     .from("remitos")
-    .select("*, doctores(nombre, ficha), remito_lineas(count)", { count: "exact" })
+    .select(
+      "*, doctores(nombre, ficha, domicilio, piso, departamento, localidad), remito_lineas(count)",
+      { count: "exact" },
+    )
     .order("numero", { ascending: false });
 
   if (f.doctorId) consulta = consulta.eq("doctor_id", Number(f.doctorId));
@@ -35,12 +51,14 @@ export async function listarRemitos(
   const filas = (data ?? []).map((fila) => {
     const { doctores, remito_lineas, ...resto } = fila as Record<string, unknown> & {
       total: number;
-      doctores: { nombre: string; ficha: number } | null;
+      doctores: DoctorDelRemito | null;
       remito_lineas: { count: number }[];
     };
     return {
       ...(resto as unknown as Remito),
       total: centavosDesdeNumeric(fila.total as number),
+      ajuste: centavosDesdeNumeric(((fila as Record<string, unknown>).ajuste as number) ?? 0),
+      ajuste_motivo: ((fila as Record<string, unknown>).ajuste_motivo as string) ?? null,
       doctor: doctores,
       lineas: remito_lineas?.[0]?.count ?? 0,
     };
@@ -52,7 +70,7 @@ export async function listarRemitos(
 export async function buscarRemitoPorNumero(numero: number): Promise<RemitoConDoctor | null> {
   const { data, error } = await getSupabase()
     .from("remitos")
-    .select("*, doctores(nombre, ficha), remito_lineas(count)")
+    .select("*, doctores(nombre, ficha, domicilio, piso, departamento, localidad), remito_lineas(count)")
     .eq("numero", numero)
     .maybeSingle();
   if (error) throw error;
@@ -60,12 +78,14 @@ export async function buscarRemitoPorNumero(numero: number): Promise<RemitoConDo
 
   const { doctores, remito_lineas, ...resto } = data as Record<string, unknown> & {
     total: number;
-    doctores: { nombre: string; ficha: number } | null;
+    doctores: DoctorDelRemito | null;
     remito_lineas: { count: number }[];
   };
   return {
     ...(resto as unknown as Remito),
     total: centavosDesdeNumeric(data.total as number),
+    ajuste: centavosDesdeNumeric(((data as Record<string, unknown>).ajuste as number) ?? 0),
+    ajuste_motivo: ((data as Record<string, unknown>).ajuste_motivo as string) ?? null,
     doctor: doctores,
     lineas: remito_lineas?.[0]?.count ?? 0,
   };
@@ -104,15 +124,20 @@ export async function emitirRemito(
   doctorId: number,
   ordenIds: number[],
   fecha: string,
+  ajuste: Centavos = 0,
+  ajusteMotivo = "",
 ): Promise<{ id: number; numero: number; total: Centavos; imputado: Centavos }> {
-  const { data, error } = await getSupabase().rpc("emitir_remito", {
-    p_doctor_id: doctorId,
-    p_orden_ids: ordenIds,
-    p_fecha: fecha,
-  });
-  if (error) throw error;
+  const r = await rpcNueva<{ id: number; numero: number; total: number; imputado: number }>(
+    "emitir_remito",
+    {
+      p_doctor_id: doctorId,
+      p_orden_ids: ordenIds,
+      p_fecha: fecha,
+      p_ajuste: numericParaPostgres(ajuste),
+      ...(ajusteMotivo.trim() !== "" ? { p_ajuste_motivo: ajusteMotivo.trim() } : {}),
+    },
+  );
 
-  const r = data as unknown as { id: number; numero: number; total: number; imputado: number };
   return {
     id: r.id,
     numero: r.numero,

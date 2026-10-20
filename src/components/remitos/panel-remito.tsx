@@ -1,7 +1,8 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Pencil, Printer } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dato } from "@/components/formulario/campo";
@@ -51,8 +52,25 @@ export function PanelRemito({
 }
 
 function DetalleRemito({ remito, onCambio }: { remito: RemitoConDoctor; onCambio: () => void }) {
+  const router = useRouter();
   const [motivo, setMotivo] = useState("");
   const [anulando, setAnulando] = useState(false);
+  const [corrigiendo, setCorrigiendo] = useState(false);
+
+  /** Corregir es anular y volver a emitir: el libro mayor no se edita. */
+  async function corregir(ordenes: number[]) {
+    setCorrigiendo(true);
+    try {
+      await anularRemito(remito.id, "Corrección del remito");
+      toast.success("Remito anulado: armá el nuevo con los cambios");
+      router.push(`/remitos/nuevo?ots=${ordenes.join(",")}`);
+    } catch {
+      toast.error("No se pudo anular el remito. Revisá la conexión y probá de nuevo.", {
+        duration: Infinity,
+      });
+      setCorrigiendo(false);
+    }
+  }
 
   const { consulta } = useConsulta<LineaRemito[]>(
     () => listarLineasDeRemito(remito.id),
@@ -89,6 +107,12 @@ function DetalleRemito({ remito, onCambio }: { remito: RemitoConDoctor; onCambio
           {remito.doctor ? `${remito.doctor.nombre} (ficha ${remito.doctor.ficha})` : "—"}
         </Dato>
         <Dato etiqueta="Órdenes entregadas">{remito.lineas}</Dato>
+        {remito.ajuste !== 0 && (
+          <Dato etiqueta={remito.ajuste < 0 ? "Descuento" : "Recargo"}>
+            {formatARS(remito.ajuste)}
+            {remito.ajuste_motivo ? ` · ${remito.ajuste_motivo}` : ""}
+          </Dato>
+        )}
       </div>
 
       <Separator />
@@ -130,6 +154,38 @@ function DetalleRemito({ remito, onCambio }: { remito: RemitoConDoctor; onCambio
           <Printer data-icon="inline-start" />
           Ver documento
         </Button>
+
+        {!remito.anulado_en && consulta.estado === "listo" && (
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button variant="outline" disabled={corrigiendo} />}>
+              <Pencil data-icon="inline-start" />
+              Corregir
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Corregir el remito {formatRemito(remito.numero)}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se anula este remito —queda el contra-asiento en la cuenta del doctor— y volvés
+                  a la bandeja con las mismas órdenes para emitirlo de nuevo con los cambios.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    void corregir(
+                      consulta.datos
+                        .map((l) => l.orden?.numero)
+                        .filter((n): n is number => typeof n === "number"),
+                    )
+                  }
+                >
+                  Anular y rehacer
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
 
         {!remito.anulado_en && (
           <AlertDialog>

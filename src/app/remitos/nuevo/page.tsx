@@ -1,14 +1,17 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Campo } from "@/components/formulario/campo";
+import { InputMonto } from "@/components/formulario/input-monto";
+import { SelectSimple } from "@/components/formulario/select-simple";
 import { emitirRemito } from "@/components/remitos/consultas";
 import { buscarOrdenPorNumero, type OrdenConDoctor } from "@/components/ordenes/consultas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -19,13 +22,24 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatFechaCorta, formatOT } from "@/lib/format";
-import { formatARS } from "@/lib/money";
+import { centavosDesdeTexto, formatARS } from "@/lib/money";
 import { interpretarEscaneo, useFocoDeEscaneo } from "@/lib/scanner";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+type TipoAjuste = "" | "descuento" | "recargo";
+
 export default function NuevoRemitoPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <NuevoRemito />
+    </Suspense>
+  );
+}
+
+function NuevoRemito() {
   const router = useRouter();
+  const parametros = useSearchParams();
   const campo = useRef<HTMLInputElement>(null);
   useFocoDeEscaneo(campo);
 
@@ -34,9 +48,47 @@ export default function NuevoRemitoPage() {
   const [bandeja, setBandeja] = useState<OrdenConDoctor[]>([]);
   const [emitiendo, setEmitiendo] = useState(false);
 
+  const [tipoAjuste, setTipoAjuste] = useState<TipoAjuste>("");
+  const [importeAjuste, setImporteAjuste] = useState("");
+  const [motivoAjuste, setMotivoAjuste] = useState("");
+  const [errorAjuste, setErrorAjuste] = useState<string>();
+
   const doctor = bandeja[0]?.doctor ?? null;
   const doctorId = bandeja[0]?.doctor_id ?? null;
-  const total = bandeja.reduce((suma, o) => suma + o.total, 0);
+  const trabajos = bandeja.reduce((suma, o) => suma + o.total, 0);
+  const ajuste =
+    tipoAjuste === "" ? 0 : (centavosDesdeTexto(importeAjuste) ?? 0) * (tipoAjuste === "descuento" ? -1 : 1);
+  const total = trabajos + ajuste;
+
+  // Se puede llegar con las OT ya puestas: desde una orden (?ot=3) o al corregir
+  // un remito anulado (?ots=3,4).
+  const pedidas = parametros.get("ots") ?? parametros.get("ot") ?? "";
+
+  useEffect(() => {
+    const numeros = pedidas
+      .split(",")
+      .map((n) => Number(n.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    if (numeros.length === 0) return;
+
+    let vigente = true;
+    void (async () => {
+      const encontradas: OrdenConDoctor[] = [];
+      for (const numero of numeros) {
+        try {
+          const orden = await buscarOrdenPorNumero(numero);
+          if (orden && orden.remito_id === null && orden.estado !== "anulada") encontradas.push(orden);
+        } catch {
+          // Si falla una, se sigue con las demás: la bandeja se puede completar a mano.
+        }
+      }
+      if (vigente) setBandeja(encontradas);
+    })();
+
+    return () => {
+      vigente = false;
+    };
+  }, [pedidas]);
 
   async function agregarOT(numero: number) {
     if (bandeja.some((o) => o.numero === numero)) {
@@ -78,9 +130,33 @@ export default function NuevoRemitoPage() {
 
   async function emitir() {
     if (doctorId === null || bandeja.length === 0) return;
+
+    if (tipoAjuste !== "") {
+      const importe = centavosDesdeTexto(importeAjuste);
+      if (importe === null || importe <= 0) {
+        setErrorAjuste("Poné el importe del ajuste.");
+        return;
+      }
+      if (motivoAjuste.trim() === "") {
+        setErrorAjuste("Un descuento o un recargo necesita un motivo.");
+        return;
+      }
+      if (total < 0) {
+        setErrorAjuste("El descuento no puede ser mayor que el total.");
+        return;
+      }
+    }
+    setErrorAjuste(undefined);
+
     setEmitiendo(true);
     try {
-      const remito = await emitirRemito(doctorId, bandeja.map((o) => o.id), fecha);
+      const remito = await emitirRemito(
+        doctorId,
+        bandeja.map((o) => o.id),
+        fecha,
+        ajuste,
+        motivoAjuste,
+      );
       toast.success(`Remito emitido: ${formatOT(remito.numero)}`);
       router.push(`/remitos/documento?remito=${remito.numero}`);
     } catch {
@@ -137,17 +213,15 @@ export default function NuevoRemitoPage() {
           <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
             Bandeja {doctor ? `· ${doctor.nombre}` : ""}
           </h2>
-          <div className="flex items-center gap-3">
-            <Campo id="fecha" etiqueta="Fecha del remito">
-              <Input
-                id="fecha"
-                type="date"
-                className="w-44"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-              />
-            </Campo>
-          </div>
+          <Campo id="fecha" etiqueta="Fecha del remito">
+            <Input
+              id="fecha"
+              type="date"
+              className="w-44"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+            />
+          </Campo>
         </div>
 
         <div className="overflow-hidden rounded-md border border-border bg-surface">
@@ -197,24 +271,94 @@ export default function NuevoRemitoPage() {
             </Table>
           )}
         </div>
+      </section>
 
-        <div className="flex items-center justify-between gap-4">
+      <section className="flex flex-col gap-3">
+        <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+          Descuento o recargo
+        </h2>
+        <div className="flex flex-wrap items-start gap-3">
+          <Campo id="tipo_ajuste" etiqueta="Ajuste">
+            <SelectSimple
+              id="tipo_ajuste"
+              valor={tipoAjuste}
+              onCambio={(v) => {
+                setTipoAjuste(v as TipoAjuste);
+                setErrorAjuste(undefined);
+              }}
+              ancho="w-44"
+              placeholder="Sin ajuste"
+              opciones={[
+                { valor: "", etiqueta: "Sin ajuste" },
+                { valor: "descuento", etiqueta: "Descuento" },
+                { valor: "recargo", etiqueta: "Recargo" },
+              ]}
+            />
+          </Campo>
+
+          {tipoAjuste !== "" && (
+            <>
+              <Campo id="importe_ajuste" etiqueta="Importe">
+                <InputMonto
+                  id="importe_ajuste"
+                  className="w-40"
+                  valor={importeAjuste}
+                  invalido={Boolean(errorAjuste)}
+                  onCambio={(v) => {
+                    setImporteAjuste(v);
+                    setErrorAjuste(undefined);
+                  }}
+                />
+              </Campo>
+              <Campo
+                id="motivo_ajuste"
+                etiqueta="Motivo"
+                error={errorAjuste}
+                ayuda="Queda escrito en el remito."
+              >
+                <Input
+                  id="motivo_ajuste"
+                  className="w-72"
+                  value={motivoAjuste}
+                  onChange={(e) => {
+                    setMotivoAjuste(e.target.value);
+                    setErrorAjuste(undefined);
+                  }}
+                  placeholder="Entrega urgente, descuento acordado…"
+                />
+              </Campo>
+            </>
+          )}
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          {ajuste !== 0 && (
+            <p className="flex items-baseline gap-3 text-xs text-ink-2">
+              <span>Trabajos {formatARS(trabajos)}</span>
+              <span>
+                {ajuste < 0 ? "Descuento" : "Recargo"} {formatARS(ajuste)}
+              </span>
+            </p>
+          )}
           <p className="flex items-baseline gap-3">
             <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
               Total del remito
             </span>
             <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
           </p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setBandeja([])} disabled={bandeja.length === 0}>
-              Vaciar bandeja
-            </Button>
-            <Button onClick={emitir} disabled={bandeja.length === 0 || emitiendo}>
-              {emitiendo ? "Emitiendo…" : "Emitir remito"}
-            </Button>
-          </div>
         </div>
-      </section>
+
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBandeja([])} disabled={bandeja.length === 0}>
+            Vaciar bandeja
+          </Button>
+          <Button onClick={emitir} disabled={bandeja.length === 0 || emitiendo}>
+            {emitiendo ? "Emitiendo…" : "Emitir remito"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

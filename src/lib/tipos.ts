@@ -126,6 +126,7 @@ export type Orden = {
   estado: EstadoOrden;
   remito_id: number | null;
   total: Centavos;
+  motivo_anulacion: string | null;
 };
 
 export type Remito = {

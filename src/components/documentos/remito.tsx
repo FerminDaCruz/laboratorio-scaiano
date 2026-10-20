@@ -15,6 +15,15 @@ export function DocumentoRemito({
   lineas: LineaRemito[];
   cuenta: ResumenCuenta;
 }) {
+  // El cadete lleva este papel: el domicilio va debajo del nombre.
+  const domicilio = [
+    remito.doctor?.domicilio,
+    remito.doctor?.piso ? `Piso ${remito.doctor.piso}` : null,
+    remito.doctor?.departamento ? `Dto. ${remito.doctor.departamento}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <>
       <style>{`
@@ -32,6 +41,7 @@ export function DocumentoRemito({
         .remito td { padding: 0.4mm 0; vertical-align: top; }
         .remito .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .remito hr { border: 0; border-top: 1px solid #000; margin: 2mm 0; }
+        .remito .sangria { margin: 0 0 0 11mm; }
         .remito .leyenda { margin-top: 3mm; text-align: center; text-transform: uppercase; }
         .remito .anulado { border: 1px solid #000; padding: 1mm; text-align: center; margin-bottom: 2mm; }
 
@@ -50,6 +60,8 @@ export function DocumentoRemito({
           dr/a: {remito.doctor?.nombre ?? "—"}
           {remito.doctor ? ` (ficha ${remito.doctor.ficha})` : ""}
         </p>
+        {domicilio && <p className="sangria">{domicilio}</p>}
+        {remito.doctor?.localidad && <p className="sangria">{remito.doctor.localidad}</p>}
 
         <hr />
 
@@ -69,12 +81,26 @@ export function DocumentoRemito({
 
         <table>
           <tbody>
+            {remito.ajuste !== 0 && (
+              <>
+                <tr>
+                  <td>subtotal</td>
+                  <td className="num">{formatARS(remito.total - remito.ajuste)}</td>
+                </tr>
+                <tr>
+                  <td>{remito.ajuste < 0 ? "descuento" : "recargo"}</td>
+                  <td className="num">{formatARS(remito.ajuste)}</td>
+                </tr>
+              </>
+            )}
             <tr>
               <td>TOTAL</td>
               <td className="num">{formatARS(remito.total)}</td>
             </tr>
           </tbody>
         </table>
+
+        {remito.ajuste_motivo && <p>motivo: {remito.ajuste_motivo}</p>}
 
         <hr />
 

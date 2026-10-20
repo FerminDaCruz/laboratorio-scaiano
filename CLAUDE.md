@@ -111,7 +111,9 @@ Cualquier otra cosa se pregunta antes.
 Estas cinco **nunca** se implementan como una secuencia de inserts desde el cliente.
 Van como funciones PL/pgSQL `SECURITY DEFINER` y se llaman con `supabase.rpc(...)`:
 
-1. `crear_orden` — asigna el número correlativo y **congela los precios** leyendo el catálogo
+1. `crear_orden` — asigna el número correlativo y **congela los precios**. El valor por
+   defecto sale del catálogo; si quien carga la orden escribe otro (un descuento o un
+   plus acordado), se congela ese. El catálogo nunca se toca desde la orden.
 2. `emitir_remito` — remito + líneas + asiento contable + marcar OT + imputar, todo en una transacción
 3. `registrar_pago` — asiento + imputación FIFO
 4. `anular_remito` — genera un contra-asiento; **nunca borra ni edita**
@@ -171,7 +173,12 @@ docs/
   ítem, separados por coma: `1.1,2.4-2.6`.
 - **Un remito agrupa varias OT** del mismo doctor. No es una por una.
 - **El precio del catálogo cambia con el tiempo.** El catálogo tiene historial con
-  fecha de vigencia; la orden guarda el precio del día en que se cargó.
+  fecha de vigencia; la orden guarda el precio del día en que se cargó, o el que se haya
+  acordado a mano para ese trabajo.
+- **Los descuentos y los plus** se hacen de dos maneras: cambiando el precio de un ítem de la
+  orden (mientras no esté facturada) o con una línea de ajuste al emitir el remito.
+- **Un remito emitido no se edita.** Para corregirlo se lo anula —queda el contra-asiento— y
+  se emite uno nuevo con las mismas órdenes.
 - **"Ps" y "dto"** en la ficha del doctor son **piso y departamento** — parte del
   domicilio. No son lista de precios ni descuento.
 - **"Od/obra"** es obra social. Es tabla propia, no texto libre.

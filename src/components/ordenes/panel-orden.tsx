@@ -1,14 +1,28 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Pencil, Printer, Receipt, Undo2 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Dato } from "@/components/formulario/campo";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSesion } from "@/components/layout/session";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatPieza } from "@/lib/fdi";
 import { formatFechaCorta, formatFechaLarga, formatHora, formatOT } from "@/lib/format";
@@ -21,11 +35,18 @@ import {
   type ItemDeOrden,
   type OrdenConDoctor,
 } from "./consultas";
+import { anularOrden } from "./datos";
 
-/** El estado siguiente del circuito de producción. La entrega la hace el remito (E8). */
+/** El circuito de producción. La entrega la hace el remito, no este panel. */
 const SIGUIENTE: Partial<Record<EstadoOrden, { estado: EstadoOrden; etiqueta: string }>> = {
   ingresada: { estado: "en_proceso", etiqueta: "Pasar a en proceso" },
   en_proceso: { estado: "terminada", etiqueta: "Marcar terminada" },
+};
+
+/** Volver atrás, para cuando alguien marcó de más. */
+const ANTERIOR: Partial<Record<EstadoOrden, { estado: EstadoOrden; etiqueta: string }>> = {
+  en_proceso: { estado: "ingresada", etiqueta: "Volver a ingresada" },
+  terminada: { estado: "en_proceso", etiqueta: "Volver a en proceso" },
 };
 
 export function PanelOrden({
@@ -58,8 +79,35 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
     "No se pudieron cargar los trabajos de la orden.",
   );
 
+  const sesion = useSesion();
+  const esAdmin = sesion.estado === "autenticado" && sesion.usuario.rol === "admin";
+
+  const [motivo, setMotivo] = useState("");
+  const [anulando, setAnulando] = useState(false);
+
   const siguiente = SIGUIENTE[orden.estado];
+  const anterior = ANTERIOR[orden.estado];
   const atrasada = estaAtrasada(orden);
+  // Mientras no esté en un remito se puede editar, anular y facturar.
+  const abierta = orden.remito_id === null && orden.estado !== "anulada";
+
+  async function anular() {
+    setAnulando(true);
+    try {
+      await anularOrden(orden.id, motivo);
+      toast.success("Orden anulada");
+      onCambio();
+    } catch (error) {
+      toast.error(
+        (error as { message?: string }).message?.includes("administrador")
+          ? "Solo un administrador puede anular una orden."
+          : "No se pudo anular la orden. Revisá la conexión y probá de nuevo.",
+        { duration: Infinity },
+      );
+    } finally {
+      setAnulando(false);
+    }
+  }
 
   async function pasarA(estado: EstadoOrden) {
     try {
@@ -102,6 +150,10 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
 
       {orden.indicaciones && <Dato etiqueta="Indicaciones">{orden.indicaciones}</Dato>}
 
+      {orden.estado === "anulada" && (
+        <Dato etiqueta="Motivo de la anulación">{orden.motivo_anulacion ?? "—"}</Dato>
+      )}
+
       <Separator />
 
       <div className="flex flex-col gap-2">
@@ -134,7 +186,7 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
 
       <Separator />
 
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
           variant="outline"
           nativeButton={false}
@@ -143,7 +195,70 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
           <Printer data-icon="inline-start" />
           Comanda
         </Button>
+
+        {abierta && (
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={`/ordenes/editar?ot=${orden.numero}`} />}
+          >
+            <Pencil data-icon="inline-start" />
+            Editar
+          </Button>
+        )}
+
+        {anterior && abierta && (
+          <Button variant="outline" onClick={() => pasarA(anterior.estado)}>
+            <Undo2 data-icon="inline-start" />
+            {anterior.etiqueta}
+          </Button>
+        )}
+
+        {abierta && esAdmin && (
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button variant="destructive" disabled={anulando} />}>
+              Anular orden
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Anular la OT {formatOT(orden.numero)}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  La orden queda anulada y no se puede facturar. No se borra: sigue apareciendo
+                  en el listado con su estado y el motivo.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="motivo-anulacion"
+                  className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase"
+                >
+                  Motivo
+                </label>
+                <Input
+                  id="motivo-anulacion"
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Por qué se anula"
+                />
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={anular}>
+                  Anular
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+
         {siguiente && <Button onClick={() => pasarA(siguiente.estado)}>{siguiente.etiqueta}</Button>}
+
+        {orden.estado === "terminada" && (
+          <Button nativeButton={false} render={<Link href={`/remitos/nuevo?ot=${orden.numero}`} />}>
+            <Receipt data-icon="inline-start" />
+            Facturar
+          </Button>
+        )}
       </div>
     </div>
   );
