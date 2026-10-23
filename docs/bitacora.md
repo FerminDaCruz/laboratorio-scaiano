@@ -557,6 +557,44 @@ Reglas:
 
 ---
 
+### [2026-10-23] Etapa E14 · El color se escribe, no se elige de una lista
+
+El laboratorio trabaja con varias guías de color y no todas son Vita Classic: atar el campo
+a una lista cerrada le impedía cargar lo que le dicta el odontólogo.
+
+**Hecho**
+- El campo Color del formulario de orden pasó de combobox a input de texto libre, con
+  `A2, 3M2, BL3…` como ejemplo en el placeholder
+- Se borró la constante `COLORES_VITA` de `src/lib/tipos.ts`: era su único uso
+
+**Archivos**
+- `src/components/ordenes/formulario-orden.tsx` · `src/lib/tipos.ts`
+
+**Decisiones**
+- Sin lista de sugerencias ni validación: el laboratorio escribe lo que necesita. La columna
+  `ordenes.color` ya era `text`, así que no hubo cambios en la base
+
+---
+
+### [2026-10-23] Etapa E14 · Asteriscos en los campos obligatorios de la orden
+
+**Hecho**
+- Llevan asterisco en el formulario de orden: Doctor, Paciente, Fecha de la orden, Trabajo,
+  Cantidad, Piezas, Arcada y, cuando hay un descuento o un plus, su importe y su motivo
+- La grilla de piezas pasó a ser un `Campo` como cualquier otro: etiqueta con asterisco,
+  el detalle de lo elegido como ayuda y el error debajo, en lugar del párrafo suelto
+- Al pie del formulario, `<NotaCamposRequeridos />`: "* Campos obligatorios. El resto se
+  puede completar después." Es el mismo componente que usa la ficha del doctor
+
+**Archivos**
+- `src/components/ordenes/formulario-orden.tsx`
+
+**Pendiente**
+- Los formularios de pagos, precios, trabajos y obras sociales todavía no marcan sus
+  campos obligatorios. Quedó fuera de este pedido
+
+---
+
 ### [2026-10-23] Etapa E14 · La cantidad sale de las piezas
 
 Pedido de Fer: en un ítem no se carga la cantidad y las piezas por separado. O se escribe

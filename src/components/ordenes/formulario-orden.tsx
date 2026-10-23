@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Campo, SeccionFormulario } from "@/components/formulario/campo";
+import { Campo, NotaCamposRequeridos, SeccionFormulario } from "@/components/formulario/campo";
 import { InputMonto } from "@/components/formulario/input-monto";
 import { Combobox } from "@/components/formulario/combobox";
 import { SelectSimple } from "@/components/formulario/select-simple";
@@ -25,7 +25,7 @@ import {
   textoDesdeCentavos,
   type Centavos,
 } from "@/lib/money";
-import { COLORES_VITA, type Doctor, type ObraSocial, type TrabajoConPrecio } from "@/lib/tipos";
+import type { Doctor, ObraSocial, TrabajoConPrecio } from "@/lib/tipos";
 import { armarEntrega, crearOrden, editarOrden, type AjusteOrden } from "./datos";
 
 const esquema = z.object({
@@ -397,6 +397,7 @@ export function FormularioOrden({
           <Campo
             id="doctor_id"
             etiqueta="Doctor"
+            requerido
             error={errors.doctor_id?.message}
             ayuda={editando ? "El doctor de una orden ya cargada no se cambia." : undefined}
           >
@@ -429,7 +430,7 @@ export function FormularioOrden({
             )}
           </Campo>
 
-          <Campo id="paciente" etiqueta="Paciente" error={errors.paciente?.message}>
+          <Campo id="paciente" etiqueta="Paciente" requerido error={errors.paciente?.message}>
             <Input
               id="paciente"
               aria-invalid={errors.paciente ? true : undefined}
@@ -466,20 +467,8 @@ export function FormularioOrden({
               <Input id="edad" inputMode="numeric" className="w-24" {...register("edad")} />
             </Campo>
             <Campo id="color" etiqueta="Color">
-              <Controller
-                control={control}
-                name="color"
-                render={({ field }) => (
-                  <Combobox
-                    id="color"
-                    valor={field.value || null}
-                    onCambio={(v) => field.onChange(v ?? "")}
-                    ancho="w-32"
-                    placeholder="Elegir…"
-                    opciones={COLORES_VITA.map((c) => ({ valor: c, etiqueta: c }))}
-                  />
-                )}
-              />
+              {/* Texto libre: el laboratorio usa varias guías y no todas son Vita. */}
+              <Input id="color" className="w-40" placeholder="A2, 3M2, BL3…" {...register("color")} />
             </Campo>
           </div>
 
@@ -574,6 +563,7 @@ export function FormularioOrden({
                 <Campo
                   id="ajuste_valor"
                   etiqueta={ajusteModo === "porcentaje" ? "Porcentaje" : "Importe"}
+                  requerido
                   error={errors.ajuste_valor?.message}
                 >
                   {ajusteModo === "porcentaje" ? (
@@ -651,7 +641,12 @@ export function FormularioOrden({
       <SeccionFormulario titulo="Entrega e indicaciones">
         <div className="flex max-w-[640px] flex-col gap-3">
           <div className="flex gap-3">
-            <Campo id="fecha" etiqueta="Fecha de la orden" error={errors.fecha?.message}>
+            <Campo
+              id="fecha"
+              etiqueta="Fecha de la orden"
+              requerido
+              error={errors.fecha?.message}
+            >
               <Input
                 id="fecha"
                 type="date"
@@ -672,6 +667,8 @@ export function FormularioOrden({
           </Campo>
         </div>
       </SeccionFormulario>
+
+      <NotaCamposRequeridos />
 
       <div className="flex justify-end gap-2 pt-3">
         <Button
@@ -782,6 +779,7 @@ function FilaItem({
           <Campo
             id={`items.${indice}.piezas`}
             etiqueta="Arcada"
+            requerido
             error={erroresItem?.piezas?.message}
           >
             <Controller
@@ -850,30 +848,32 @@ function FilaItem({
 
       {modo === "piezas" && (
         <>
-          <Controller
-            control={control}
-            name={`items.${indice}.piezas`}
-            render={({ field }) => (
-              <Odontograma
-                id={`items.${indice}.piezas.grilla`}
-                valor={field.value}
-                onCambio={field.onChange}
-                mostrarCampo={false}
-                mostrarModos={false}
-                agruparAlClickear
-              />
-            )}
-          />
-
-          <p className="text-xs text-ink-3">
-            {elegidas === 0
-              ? "Clickeá las piezas en el diagrama. Tres o más seguidas se agrupan en un tramo."
-              : `Piezas: ${formatPieza(item?.piezas)} · ${elegidas} ${elegidas === 1 ? "pieza" : "piezas"}`}
-          </p>
-
-          {erroresItem?.piezas?.message && (
-            <p className="text-xs text-danger">{erroresItem.piezas.message}</p>
-          )}
+          <Campo
+            id={`items.${indice}.piezas.grilla`}
+            etiqueta="Piezas"
+            requerido
+            error={erroresItem?.piezas?.message}
+            ayuda={
+              elegidas === 0
+                ? "Clickeá las piezas en el diagrama. Tres o más seguidas se agrupan en un tramo."
+                : `${formatPieza(item?.piezas)} · ${elegidas} ${elegidas === 1 ? "pieza" : "piezas"}`
+            }
+          >
+            <Controller
+              control={control}
+              name={`items.${indice}.piezas`}
+              render={({ field }) => (
+                <Odontograma
+                  id={`items.${indice}.piezas.grilla`}
+                  valor={field.value}
+                  onCambio={field.onChange}
+                  mostrarCampo={false}
+                  mostrarModos={false}
+                  agruparAlClickear
+                />
+              )}
+            />
+          </Campo>
         </>
       )}
     </div>

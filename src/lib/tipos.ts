@@ -154,11 +154,3 @@ export type MovimientoCC = {
   referencia: string | null;
   anula_movimiento_id: number | null;
 };
-
-/** Colores Vita Classic, más el campo libre que se usa al cargar la orden. */
-export const COLORES_VITA = [
-  "A1", "A2", "A3", "A3.5", "A4",
-  "B1", "B2", "B3", "B4",
-  "C1", "C2", "C3", "C4",
-  "D2", "D3", "D4",
-];
