@@ -24,7 +24,14 @@ export type RemitoConDoctor = Remito & {
 export type LineaRemito = {
   id: number;
   importe: Centavos;
-  orden: Pick<Orden, "id" | "numero" | "paciente" | "fecha"> | null;
+  /** El importe de la línea ya incluye el ajuste de la orden; se muestra desglosado. */
+  orden:
+    | (Pick<Orden, "id" | "numero" | "paciente" | "fecha"> & {
+        ajuste: Centavos;
+        ajuste_pct: number | null;
+        ajuste_motivo: string | null;
+      })
+    | null;
 };
 
 export type FiltrosRemitos = { doctorId: string; desde: string; hasta: string; pagina: number };
@@ -91,10 +98,27 @@ export async function buscarRemitoPorNumero(numero: number): Promise<RemitoConDo
   };
 }
 
+/** La orden de una línea, con el ajuste ya pasado a centavos. */
+function aOrdenDeLinea(cruda: unknown): LineaRemito["orden"] {
+  if (!cruda) return null;
+  const fila = cruda as Record<string, unknown>;
+  return {
+    id: fila.id as number,
+    numero: fila.numero as number,
+    paciente: fila.paciente as string,
+    fecha: fila.fecha as string,
+    ajuste: centavosDesdeNumeric((fila.ajuste as number) ?? 0),
+    ajuste_pct: (fila.ajuste_pct as number) ?? null,
+    ajuste_motivo: (fila.ajuste_motivo as string) ?? null,
+  };
+}
+
 export async function listarLineasDeRemito(remitoId: number): Promise<LineaRemito[]> {
   const { data, error } = await getSupabase()
     .from("remito_lineas")
-    .select("id, importe, ordenes(id, numero, paciente, fecha)")
+    .select(
+      "id, importe, ordenes(id, numero, paciente, fecha, ajuste, ajuste_pct, ajuste_motivo)",
+    )
     .eq("remito_id", remitoId);
   if (error) throw error;
 
@@ -102,7 +126,7 @@ export async function listarLineasDeRemito(remitoId: number): Promise<LineaRemit
     .map((fila) => ({
       id: fila.id as number,
       importe: centavosDesdeNumeric(fila.importe as number),
-      orden: (fila as { ordenes: LineaRemito["orden"] }).ordenes,
+      orden: aOrdenDeLinea((fila as Record<string, unknown>).ordenes),
     }))
     .sort((a, b) => (a.orden?.numero ?? 0) - (b.orden?.numero ?? 0));
 }

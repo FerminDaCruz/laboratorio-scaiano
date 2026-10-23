@@ -1,5 +1,7 @@
 "use client";
 
+import { Fragment } from "react";
+
 import type { LineaRemito, RemitoConDoctor, ResumenCuenta } from "@/components/remitos/consultas";
 import { formatFechaLarga, formatOT, formatRemito } from "@/lib/format";
 import { ANCHO_TICKET_MM } from "@/lib/impresion";
@@ -42,6 +44,7 @@ export function DocumentoRemito({
         .remito .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .remito hr { border: 0; border-top: 1px solid #000; margin: 2mm 0; }
         .remito .sangria { margin: 0 0 0 11mm; }
+        .remito .detalle { padding-left: 3mm; }
         .remito .leyenda { margin-top: 3mm; text-align: center; text-transform: uppercase; }
         .remito .anulado { border: 1px solid #000; padding: 1mm; text-align: center; margin-bottom: 2mm; }
 
@@ -67,13 +70,37 @@ export function DocumentoRemito({
 
         <table>
           <tbody>
-            {lineas.map((linea) => (
-              <tr key={linea.id}>
-                <td>{linea.orden ? formatOT(linea.orden.numero) : "—"}</td>
-                <td>{linea.orden?.paciente ?? "—"}</td>
-                <td className="num">{formatARS(linea.importe)}</td>
-              </tr>
-            ))}
+            {lineas.map((linea) => {
+              const ajuste = linea.orden?.ajuste ?? 0;
+              const pct = linea.orden?.ajuste_pct ?? null;
+              return (
+                <Fragment key={linea.id}>
+                  <tr>
+                    <td>{linea.orden ? formatOT(linea.orden.numero) : "—"}</td>
+                    <td>{linea.orden?.paciente ?? "—"}</td>
+                    <td className="num">{formatARS(linea.importe - ajuste)}</td>
+                  </tr>
+                  {ajuste !== 0 && (
+                    <>
+                      <tr>
+                        <td />
+                        <td className="detalle">
+                          {ajuste < 0 ? "descuento" : "plus"}
+                          {pct !== null ? ` ${Math.abs(pct)}%` : ""}
+                          {linea.orden?.ajuste_motivo ? ` · ${linea.orden.ajuste_motivo}` : ""}
+                        </td>
+                        <td className="num">{formatARS(ajuste)}</td>
+                      </tr>
+                      <tr>
+                        <td />
+                        <td className="detalle">subtotal</td>
+                        <td className="num">{formatARS(linea.importe)}</td>
+                      </tr>
+                    </>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
 

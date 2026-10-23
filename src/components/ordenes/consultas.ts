@@ -33,6 +33,7 @@ function aOrden(fila: FilaCruda): OrdenConDoctor {
   return {
     ...(resto as unknown as Orden),
     total: centavosDesdeNumeric(fila.total),
+    ajuste: centavosDesdeNumeric((fila.ajuste as number) ?? 0),
     doctor: doctores,
     obra_social: obras_sociales,
   };

@@ -126,6 +126,11 @@ export type Orden = {
   estado: EstadoOrden;
   remito_id: number | null;
   total: Centavos;
+  /** Descuento (negativo) o plus (positivo) de la orden. El total ya lo incluye. */
+  ajuste: Centavos;
+  /** El porcentaje acordado, si se pactó así. Null si fue un monto fijo. */
+  ajuste_pct: number | null;
+  ajuste_motivo: string | null;
   motivo_anulacion: string | null;
 };
 

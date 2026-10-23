@@ -111,9 +111,9 @@ Cualquier otra cosa se pregunta antes.
 Estas cinco **nunca** se implementan como una secuencia de inserts desde el cliente.
 Van como funciones PL/pgSQL `SECURITY DEFINER` y se llaman con `supabase.rpc(...)`:
 
-1. `crear_orden` — asigna el número correlativo y **congela los precios**. El valor por
-   defecto sale del catálogo; si quien carga la orden escribe otro (un descuento o un
-   plus acordado), se congela ese. El catálogo nunca se toca desde la orden.
+1. `crear_orden` — asigna el número correlativo y **congela los precios del catálogo**.
+   El precio de un trabajo no se escribe a mano: lo que se acuerde de más o de menos va
+   como un **ajuste** sobre el total de la orden. El catálogo nunca se toca desde la orden.
 2. `emitir_remito` — remito + líneas + asiento contable + marcar OT + imputar, todo en una transacción
 3. `registrar_pago` — asiento + imputación FIFO
 4. `anular_remito` — genera un contra-asiento; **nunca borra ni edita**
@@ -171,12 +171,15 @@ docs/
   El campo de piezas debe aceptar cuatro formas: sin pieza, piezas sueltas, tramo
   (un puente) y arcada completa. Las sueltas y los tramos se pueden combinar en un mismo
   ítem, separados por coma: `1.1,2.4-2.6`.
+- **La cantidad y las piezas no se cargan dos veces.** Un ítem se cobra por cantidad (un
+  número escrito) o por piezas (se clickean en el odontograma y la cantidad sale de ahí).
+  Tres o más piezas contiguas se agrupan solas en un tramo.
 - **Un remito agrupa varias OT** del mismo doctor. No es una por una.
 - **El precio del catálogo cambia con el tiempo.** El catálogo tiene historial con
-  fecha de vigencia; la orden guarda el precio del día en que se cargó, o el que se haya
-  acordado a mano para ese trabajo.
-- **Los descuentos y los plus** se hacen de dos maneras: cambiando el precio de un ítem de la
-  orden (mientras no esté facturada) o con una línea de ajuste al emitir el remito.
+  fecha de vigencia; la orden guarda el precio del día en que se cargó.
+- **Los descuentos y los plus** son una línea aparte, nunca otro precio del trabajo. Se
+  pueden poner en dos lugares: en la orden (en porcentaje o en monto fijo, mientras no esté
+  facturada) y en el remito al emitirlo. Los dos piden un motivo y salen impresos.
 - **Un remito emitido no se edita.** Para corregirlo se lo anula —queda el contra-asiento— y
   se emite uno nuevo con las mismas órdenes.
 - **"Ps" y "dto"** en la ficha del doctor son **piso y departamento** — parte del

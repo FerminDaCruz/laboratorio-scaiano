@@ -319,6 +319,10 @@ formatPieza(p)        // "1.8" · "2.4–2.6" · "arcada sup." · "—"
 
 Montos negativos (saldo a favor) en `ok` y entre paréntesis: `($ 12.000,00)`.
 
+Las piezas de un ítem de orden se eligen **clickeando el odontograma**, nunca tipeando: el
+trabajo se cobra por cantidad (número escrito) o por piezas (cantidad deducida del
+diagrama). Tres o más piezas contiguas se muestran como tramo: `3.3–3.7 · 4.4`.
+
 ---
 
 ## 9. Layout

@@ -5,17 +5,33 @@ export type ItemNuevo = {
   trabajo_id: number;
   cantidad: number;
   piezas: string | null;
-  /** Precio acordado para este trabajo. Si es null, se usa el del catálogo. */
-  precio: Centavos | null;
 };
+
+/**
+ * Descuento o plus de la orden. El precio de cada trabajo sale del catálogo y no se
+ * toca: lo acordado va acá, sobre el total. El signo lo dice el valor: negativo
+ * descuenta, positivo suma.
+ */
+export type AjusteOrden =
+  | { tipo: "porcentaje"; porcentaje: number; motivo: string }
+  | { tipo: "monto"; monto: Centavos; motivo: string };
 
 function aItemsJson(items: ItemNuevo[]) {
   return items.map((i) => ({
     trabajo_id: i.trabajo_id,
     cantidad: i.cantidad,
     piezas: i.piezas,
-    ...(i.precio !== null ? { precio: numericParaPostgres(i.precio) } : {}),
   }));
+}
+
+function argumentosDeAjuste(ajuste: AjusteOrden | null) {
+  if (ajuste === null) return {};
+  return {
+    p_ajuste_tipo: ajuste.tipo,
+    p_ajuste_valor:
+      ajuste.tipo === "monto" ? numericParaPostgres(ajuste.monto) : ajuste.porcentaje,
+    p_ajuste_motivo: ajuste.motivo,
+  };
 }
 
 export type OrdenNueva = {
@@ -29,16 +45,17 @@ export type OrdenNueva = {
   indicaciones: string | null;
   fecha: string;
   entrega_at: string | null;
+  ajuste: AjusteOrden | null;
 };
 
 export type OrdenCreada = { id: number; numero: number; total: Centavos };
 
 /**
- * Un solo viaje al servidor. La función asigna el número correlativo y congela
- * los precios: el del catálogo, o el que se haya acordado para ese trabajo.
+ * Un solo viaje al servidor. La función asigna el número correlativo y congela los
+ * precios del catálogo, más el descuento o el plus que se haya acordado.
  */
 export async function crearOrden(orden: OrdenNueva): Promise<OrdenCreada> {
-  const { data, error } = await getSupabase().rpc("crear_orden", {
+  const data = await rpcNueva<{ id: number; numero: number; total: number }>("crear_orden", {
     p_doctor_id: orden.doctor_id,
     p_paciente: orden.paciente,
     p_items: aItemsJson(orden.items),
@@ -49,14 +66,13 @@ export async function crearOrden(orden: OrdenNueva): Promise<OrdenCreada> {
     ...(orden.indicaciones ? { p_indicaciones: orden.indicaciones } : {}),
     p_fecha: orden.fecha,
     ...(orden.entrega_at ? { p_entrega_at: orden.entrega_at } : {}),
+    ...argumentosDeAjuste(orden.ajuste),
   });
-  if (error) throw error;
 
-  const resultado = data as unknown as { id: number; numero: number; total: number };
   return {
-    id: resultado.id,
-    numero: resultado.numero,
-    total: centavosDesdeNumeric(resultado.total),
+    id: data.id,
+    numero: data.numero,
+    total: centavosDesdeNumeric(data.total),
   };
 }
 
@@ -75,6 +91,7 @@ export async function editarOrden(
     ...(orden.color ? { p_color: orden.color } : {}),
     ...(orden.indicaciones ? { p_indicaciones: orden.indicaciones } : {}),
     ...(orden.entrega_at ? { p_entrega_at: orden.entrega_at } : {}),
+    ...argumentosDeAjuste(orden.ajuste),
   });
 
   return {

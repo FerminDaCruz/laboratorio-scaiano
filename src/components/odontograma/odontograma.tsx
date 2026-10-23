@@ -13,6 +13,7 @@ import {
   esTemporal,
   parsearEntradaPiezas,
   parsearPiezas,
+  piezasDesdeSeleccion,
   piezasSeleccionadas,
   secuenciaArcada,
   serializarPiezas,
@@ -57,6 +58,8 @@ export function Odontograma({
   onCambio,
   compacto = false,
   mostrarCampo = true,
+  mostrarModos = true,
+  agruparAlClickear = false,
 }: {
   id?: string;
   /** Valor serializado, tal como se guarda en orden_items.piezas. */
@@ -66,6 +69,13 @@ export function Odontograma({
   compacto?: boolean;
   /** Oculta el campo de texto, cuando ya hay uno al lado que escribe el mismo valor. */
   mostrarCampo?: boolean;
+  /** Oculta los modos y la arcada: queda solo la grilla para clickear. */
+  mostrarModos?: boolean;
+  /**
+   * Clickear suma o saca una pieza y los tramos se arman solos: tres o más piezas
+   * contiguas se agrupan. Es como se cargan las piezas en una orden.
+   */
+  agruparAlClickear?: boolean;
 }) {
   const piezas = parsearPiezas(valor);
   const seleccionadas = piezasSeleccionadas(piezas);
@@ -110,6 +120,14 @@ export function Odontograma({
   }
 
   function clickPieza(pieza: string) {
+    if (agruparAlClickear) {
+      const elegidas = new Set(seleccionadas);
+      if (elegidas.has(pieza)) elegidas.delete(pieza);
+      else elegidas.add(pieza);
+      emitir(piezasDesdeSeleccion([...elegidas]));
+      return;
+    }
+
     if (modo === "arcada") {
       const arcada = arcadaDePieza(pieza);
       if (arcada) emitir({ modo: "arcada", arcada });
@@ -178,7 +196,7 @@ export function Odontograma({
         </p>
       )}
 
-      {!compacto && (
+      {!compacto && mostrarModos && (
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={modo} onValueChange={(v) => cambiarModo(v as Modo)}>
           <TabsList>

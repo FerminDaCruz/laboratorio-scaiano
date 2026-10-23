@@ -1,8 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -18,9 +18,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
 import { formatPieza, parsearPiezas, piezasSeleccionadas } from "@/lib/fdi";
 import { formatOT } from "@/lib/format";
-import { centavosDesdeTexto, formatARS, textoDesdeCentavos, type Centavos } from "@/lib/money";
+import {
+  aplicarPorcentaje,
+  centavosDesdeTexto,
+  formatARS,
+  textoDesdeCentavos,
+  type Centavos,
+} from "@/lib/money";
 import { COLORES_VITA, type Doctor, type ObraSocial, type TrabajoConPrecio } from "@/lib/tipos";
-import { armarEntrega, crearOrden, editarOrden } from "./datos";
+import { armarEntrega, crearOrden, editarOrden, type AjusteOrden } from "./datos";
 
 const esquema = z.object({
   doctor_id: z.string().min(1, "Elegí el doctor."),
@@ -38,28 +44,100 @@ const esquema = z.object({
   indicaciones: z.string(),
   items: z
     .array(
-      z.object({
-        trabajo_id: z.string().min(1, "Elegí el trabajo."),
-        cantidad: z
-          .string()
-          .refine((v) => /^\d+$/.test(v) && Number(v) > 0, "La cantidad tiene que ser mayor que cero."),
-        piezas: z.string().nullable(),
-        precio: z
-          .string()
-          .refine((v) => v === "" || centavosDesdeTexto(v) !== null, "El precio no es un monto válido.")
-          .refine((v) => v === "" || (centavosDesdeTexto(v) ?? -1) >= 0, "El precio no puede ser negativo."),
-      }),
+      z
+        .object({
+          trabajo_id: z.string().min(1, "Elegí el trabajo."),
+          cantidad: z.string(),
+          piezas: z.string().nullable(),
+          /** "cantidad" | "piezas" | "arcada": de dónde sale la cantidad. */
+          modo_piezas: z.string(),
+        })
+        .superRefine((item, ctx) => {
+          if (item.modo_piezas === "piezas") {
+            if (piezasSeleccionadas(parsearPiezas(item.piezas)).length === 0) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["piezas"],
+                message: "Elegí las piezas en el diagrama.",
+              });
+            }
+            return;
+          }
+
+          if (item.modo_piezas === "arcada" && parsearPiezas(item.piezas).modo !== "arcada") {
+            ctx.addIssue({ code: "custom", path: ["piezas"], message: "Elegí la arcada." });
+          }
+          if (!/^\d+$/.test(item.cantidad) || Number(item.cantidad) <= 0) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["cantidad"],
+              message: "La cantidad tiene que ser mayor que cero.",
+            });
+          }
+        }),
     )
     .min(1, "La orden necesita al menos un trabajo."),
+  // Descuento o plus de la orden. El precio del trabajo no se toca.
+  ajuste_tipo: z.string(),
+  ajuste_modo: z.string(),
+  ajuste_valor: z.string(),
+  ajuste_motivo: z.string(),
+}).superRefine((valores, ctx) => {
+  if (valores.ajuste_tipo === "") return;
+
+  if (valores.ajuste_modo === "porcentaje") {
+    const pct = porcentajeDesdeTexto(valores.ajuste_valor);
+    if (pct === null || pct <= 0 || pct > 100) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ajuste_valor"],
+        message: "Poné un porcentaje mayor que cero y hasta 100.",
+      });
+    }
+  } else {
+    const monto = centavosDesdeTexto(valores.ajuste_valor);
+    if (monto === null || monto <= 0) {
+      ctx.addIssue({ code: "custom", path: ["ajuste_valor"], message: "Poné el importe." });
+    }
+  }
+
+  if (valores.ajuste_motivo.trim() === "") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["ajuste_motivo"],
+      message: "Un descuento o un plus necesita un motivo.",
+    });
+  }
 });
+
+/** "12,5", "12.5" o "12,5%" → 12.5. Null si no es un porcentaje. */
+function porcentajeDesdeTexto(texto: string): number | null {
+  const limpio = texto.trim().replace("%", "").replace(",", ".");
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(limpio)) return null;
+  return Number(limpio);
+}
+
+/** Lo que suma o resta el ajuste sobre la suma de los trabajos. */
+function calcularAjuste(base: Centavos, tipo: string, modo: string, valor: string): Centavos {
+  if (tipo === "") return 0;
+  const signo = tipo === "descuento" ? -1 : 1;
+
+  if (modo === "porcentaje") {
+    const pct = porcentajeDesdeTexto(valor);
+    return pct === null ? 0 : signo * (aplicarPorcentaje(base, pct) - base);
+  }
+
+  const monto = centavosDesdeTexto(valor);
+  return monto === null ? 0 : signo * monto;
+}
 
 type Formulario = z.infer<typeof esquema>;
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
-const ITEM_VACIO = { trabajo_id: "", cantidad: "1", piezas: null, precio: "" };
+const ITEM_VACIO = { trabajo_id: "", cantidad: "1", piezas: null, modo_piezas: "cantidad" };
 
-/** Una orden que se está editando, con sus ítems y los precios ya congelados. */
+/** Una orden que se está editando. Los precios ya están congelados en el servidor. */
 export type OrdenEditable = {
   id: number;
   numero: number;
@@ -72,7 +150,10 @@ export type OrdenEditable = {
   fecha: string;
   entrega_at: string | null;
   indicaciones: string | null;
-  items: { trabajo_id: number; cantidad: number; piezas: string | null; precio: Centavos }[];
+  items: { trabajo_id: number; cantidad: number; piezas: string | null }[];
+  ajuste: Centavos;
+  ajuste_pct: number | null;
+  ajuste_motivo: string | null;
 };
 
 function valoresDeOrden(orden: OrdenEditable): Formulario {
@@ -101,19 +182,50 @@ function valoresDeOrden(orden: OrdenEditable): Formulario {
       trabajo_id: String(i.trabajo_id),
       cantidad: String(i.cantidad),
       piezas: i.piezas,
-      precio: textoDesdeCentavos(i.precio),
+      modo_piezas: modoDeItem(i.piezas),
     })),
+    ajuste_tipo: orden.ajuste === 0 ? "" : orden.ajuste < 0 ? "descuento" : "plus",
+    ajuste_modo: orden.ajuste_pct !== null ? "porcentaje" : "monto",
+    ajuste_valor:
+      orden.ajuste === 0
+        ? ""
+        : orden.ajuste_pct !== null
+          ? String(Math.abs(orden.ajuste_pct))
+          : textoDesdeCentavos(Math.abs(orden.ajuste)),
+    ajuste_motivo: orden.ajuste_motivo ?? "",
   };
 }
 
-/** Precio que se va a cobrar: el escrito a mano, o el del catálogo. */
+/** De dónde sale la cantidad de un ítem ya guardado. */
+function modoDeItem(piezas: string | null): string {
+  const valor = parsearPiezas(piezas);
+  if (valor.modo === "arcada") return "arcada";
+  return valor.modo === "partes" ? "piezas" : "cantidad";
+}
+
+/**
+ * La cantidad que se cobra. Si el trabajo se carga por piezas, la cantidad es el
+ * número de piezas elegidas y no se escribe a mano.
+ */
+function cantidadDelItem(
+  item: { cantidad: string; piezas: string | null; modo_piezas: string } | undefined,
+): number | null {
+  if (!item) return null;
+
+  if (item.modo_piezas === "piezas") {
+    const elegidas = piezasSeleccionadas(parsearPiezas(item.piezas)).length;
+    return elegidas === 0 ? null : elegidas;
+  }
+
+  return /^\d+$/.test(item.cantidad) && Number(item.cantidad) > 0 ? Number(item.cantidad) : null;
+}
+
+/** El precio del catálogo: es el único que se cobra por el trabajo. */
 function precioDelItem(
-  item: { trabajo_id: string; precio: string } | undefined,
+  item: { trabajo_id: string } | undefined,
   porId: Map<string, TrabajoConPrecio>,
 ): Centavos | null {
   if (!item) return null;
-  const escrito = centavosDesdeTexto(item.precio ?? "");
-  if (escrito !== null) return escrito;
   return porId.get(item.trabajo_id)?.precio ?? null;
 }
 
@@ -130,6 +242,10 @@ function valoresIniciales(): Formulario {
     entrega_hora: "",
     indicaciones: "",
     items: [{ ...ITEM_VACIO }],
+    ajuste_tipo: "",
+    ajuste_modo: "porcentaje",
+    ajuste_valor: "",
+    ajuste_motivo: "",
   };
 }
 
@@ -184,22 +300,39 @@ export function FormularioOrden({
   }, [doctorId, doctores, getValues, setValue]);
 
   const porId = new Map(trabajos.map((t) => [String(t.id), t]));
-  const total = itemsMirados.reduce((suma, item) => {
+  const totalTrabajos = itemsMirados.reduce((suma, item) => {
     const precio = precioDelItem(item, porId);
-    const cantidad = Number(item.cantidad);
-    if (precio === null || !Number.isInteger(cantidad)) return suma;
+    const cantidad = cantidadDelItem(item);
+    if (precio === null || cantidad === null) return suma;
     return suma + precio * cantidad;
   }, 0);
+
+  const ajusteTipo = watch("ajuste_tipo");
+  const ajusteModo = watch("ajuste_modo");
+  const ajusteValor = watch("ajuste_valor");
+  const ajuste = calcularAjuste(totalTrabajos, ajusteTipo, ajusteModo, ajusteValor);
+  const total = totalTrabajos + ajuste;
+
+  function ajusteParaGuardar(datos: Formulario): AjusteOrden | null {
+    if (datos.ajuste_tipo === "") return null;
+
+    const signo = datos.ajuste_tipo === "descuento" ? -1 : 1;
+    const motivo = datos.ajuste_motivo.trim();
+
+    return datos.ajuste_modo === "porcentaje"
+      ? { tipo: "porcentaje", porcentaje: signo * (porcentajeDesdeTexto(datos.ajuste_valor) ?? 0), motivo }
+      : { tipo: "monto", monto: signo * (centavosDesdeTexto(datos.ajuste_valor) ?? 0), motivo };
+  }
 
   async function guardar(datos: Formulario) {
     const comunes = {
       paciente: datos.paciente,
       items: datos.items.map((i) => ({
         trabajo_id: Number(i.trabajo_id),
-        cantidad: Number(i.cantidad),
+        cantidad: cantidadDelItem(i) ?? 1,
         piezas: i.piezas,
-        precio: centavosDesdeTexto(i.precio),
       })),
+      ajuste: ajusteParaGuardar(datos),
       sexo: datos.sexo || null,
       edad: datos.edad === "" ? null : Number(datos.edad),
       obra_social_id: datos.obra_social_id ? Number(datos.obra_social_id) : null,
@@ -240,7 +373,11 @@ export function FormularioOrden({
           ? "Hay un trabajo sin precio vigente. Cargale el precio antes de usarlo en una orden."
           : (error as { message?: string }).message?.includes("remito")
             ? "La orden ya está en un remito: para cambiarla hay que corregir el remito."
-            : "No se pudo guardar la orden. Revisá la conexión y probá de nuevo.",
+            : /descuento|plus|motivo|porcentaje/.test(
+                  (error as { message?: string }).message ?? "",
+                )
+              ? ((error as { message?: string }).message as string)
+              : "No se pudo guardar la orden. Revisá la conexión y probá de nuevo.",
         { duration: Infinity },
       );
     }
@@ -381,20 +518,132 @@ export function FormularioOrden({
             />
           ))}
 
-          <div className="flex items-center justify-between gap-4">
-            <Button type="button" variant="outline" onClick={() => items.append({ ...ITEM_VACIO })}>
-              <Plus data-icon="inline-start" />
-              Agregar trabajo
-            </Button>
-            <p className="flex items-baseline gap-3">
-              <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-                Total estimado
-              </span>
-              <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
-            </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start"
+            onClick={() => items.append({ ...ITEM_VACIO })}
+          >
+            <Plus data-icon="inline-start" />
+            Agregar trabajo
+          </Button>
+
+          <div className="flex flex-wrap items-start gap-3 border-t border-border pt-4">
+            <Campo id="ajuste_tipo" etiqueta="Descuento o plus">
+              <Controller
+                control={control}
+                name="ajuste_tipo"
+                render={({ field }) => (
+                  <SelectSimple
+                    id="ajuste_tipo"
+                    valor={field.value}
+                    onCambio={field.onChange}
+                    ancho="w-40"
+                    placeholder="Sin ajuste"
+                    opciones={[
+                      { valor: "", etiqueta: "Sin ajuste" },
+                      { valor: "descuento", etiqueta: "Descuento" },
+                      { valor: "plus", etiqueta: "Plus" },
+                    ]}
+                  />
+                )}
+              />
+            </Campo>
+
+            {ajusteTipo !== "" && (
+              <>
+                <Campo id="ajuste_modo" etiqueta="Calculado">
+                  <Controller
+                    control={control}
+                    name="ajuste_modo"
+                    render={({ field }) => (
+                      <SelectSimple
+                        id="ajuste_modo"
+                        valor={field.value}
+                        onCambio={field.onChange}
+                        ancho="w-40"
+                        opciones={[
+                          { valor: "porcentaje", etiqueta: "Porcentaje" },
+                          { valor: "monto", etiqueta: "Monto fijo" },
+                        ]}
+                      />
+                    )}
+                  />
+                </Campo>
+
+                <Campo
+                  id="ajuste_valor"
+                  etiqueta={ajusteModo === "porcentaje" ? "Porcentaje" : "Importe"}
+                  error={errors.ajuste_valor?.message}
+                >
+                  {ajusteModo === "porcentaje" ? (
+                    <Input
+                      id="ajuste_valor"
+                      inputMode="decimal"
+                      className="w-28"
+                      placeholder="10"
+                      aria-invalid={Boolean(errors.ajuste_valor)}
+                      {...register("ajuste_valor")}
+                    />
+                  ) : (
+                    <Controller
+                      control={control}
+                      name="ajuste_valor"
+                      render={({ field }) => (
+                        <InputMonto
+                          id="ajuste_valor"
+                          className="w-40"
+                          valor={field.value}
+                          onCambio={field.onChange}
+                          invalido={Boolean(errors.ajuste_valor)}
+                        />
+                      )}
+                    />
+                  )}
+                </Campo>
+
+                <Campo
+                  id="ajuste_motivo"
+                  etiqueta="Motivo"
+                  requerido
+                  error={errors.ajuste_motivo?.message}
+                >
+                  <Input
+                    id="ajuste_motivo"
+                    className="w-72"
+                    placeholder="Urgente, descuento acordado…"
+                    aria-invalid={Boolean(errors.ajuste_motivo)}
+                    {...register("ajuste_motivo")}
+                  />
+                </Campo>
+              </>
+            )}
+
+            <div className="ml-auto flex flex-col items-end gap-1">
+              {ajuste !== 0 && (
+                <>
+                  <p className="flex items-baseline gap-3 text-xs text-ink-2">
+                    <span>Trabajos</span>
+                    <span className="tabular-nums">{formatARS(totalTrabajos)}</span>
+                  </p>
+                  <p className="flex items-baseline gap-3 text-xs text-ink-2">
+                    <span>{ajuste < 0 ? "Descuento" : "Plus"}</span>
+                    <span className="tabular-nums">{formatARS(ajuste)}</span>
+                  </p>
+                </>
+              )}
+              <p className="flex items-baseline gap-3">
+                <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+                  Total estimado
+                </span>
+                <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
+              </p>
+            </div>
           </div>
+
           <p className="text-xs text-ink-3">
-            El precio definitivo lo congela el servidor al guardar, con el catálogo del día.
+            Los precios salen del catálogo y los congela el servidor al guardar. Lo que se
+            acuerde de más o de menos va en el descuento o el plus.
           </p>
         </div>
       </SeccionFormulario>
@@ -452,7 +701,6 @@ function FilaItem({
   trabajos: TrabajoConPrecio[];
   onQuitar?: () => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
   const {
     control,
     register,
@@ -463,30 +711,29 @@ function FilaItem({
 
   const porId = new Map(trabajos.map((t) => [String(t.id), t]));
   const item = watch(`items.${indice}`);
-  const trabajo = porId.get(item?.trabajo_id ?? "");
-  const cantidad = Number(item?.cantidad);
+  const modo = item?.modo_piezas ?? "cantidad";
   const precio = precioDelItem(item, porId);
-  const subtotal = precio !== null && Number.isInteger(cantidad) ? precio * cantidad : null;
+  const cantidad = cantidadDelItem(item);
+  const subtotal = precio !== null && cantidad !== null ? precio * cantidad : null;
   const erroresItem = errors.items?.[indice];
-  const precioDeCatalogo = trabajo?.precio ?? null;
-  const precioCambiado =
-    precioDeCatalogo !== null && precio !== null && precio !== precioDeCatalogo;
-
-  // Para los trabajos que se hacen pieza por pieza, la cantidad y las piezas elegidas
-  // tienen que dar lo mismo. No aplica a una arcada completa ni a un trabajo sin pieza
-  // (una prótesis completa es cantidad 1 y una arcada entera).
   const piezas = parsearPiezas(item?.piezas);
-  const piezasElegidas =
-    piezas.modo === "partes" ? piezasSeleccionadas(piezas).length : null;
-  const noCoinciden =
-    piezasElegidas !== null && Number.isInteger(cantidad) && cantidad > 0 && piezasElegidas !== cantidad;
+  const elegidas = piezasSeleccionadas(piezas).length;
+
+  /** Cambiar de modo limpia lo que ya no corresponde, para no dejar datos colgados. */
+  function cambiarModo(nuevo: string) {
+    setValue(`items.${indice}.modo_piezas`, nuevo);
+    setValue(`items.${indice}.piezas`, nuevo === "arcada" ? "arcada:sup" : null);
+    if (nuevo !== "cantidad") setValue(`items.${indice}.cantidad`, nuevo === "arcada" ? "1" : "");
+    else setValue(`items.${indice}.cantidad`, "1");
+  }
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-start gap-3">
         <Campo
           id={`items.${indice}.trabajo_id`}
           etiqueta="Trabajo"
+          requerido
           error={erroresItem?.trabajo_id?.message}
         >
           <Controller
@@ -496,14 +743,7 @@ function FilaItem({
               <Combobox
                 id={`items.${indice}.trabajo_id`}
                 valor={field.value || null}
-                onCambio={(v) => {
-                  field.onChange(v ?? "");
-                  const elegido = porId.get(v ?? "");
-                  setValue(
-                    `items.${indice}.precio`,
-                    elegido?.precio ? textoDesdeCentavos(elegido.precio) : "",
-                  );
-                }}
+                onCambio={(v) => field.onChange(v ?? "")}
                 ancho="w-72"
                 invalido={Boolean(erroresItem?.trabajo_id)}
                 placeholder="Código o título…"
@@ -518,80 +758,77 @@ function FilaItem({
           />
         </Campo>
 
-        <Campo
-          id={`items.${indice}.cantidad`}
-          etiqueta="Cantidad"
-          error={erroresItem?.cantidad?.message}
-        >
-          <Input
-            id={`items.${indice}.cantidad`}
-            inputMode="numeric"
-            className="w-24"
-            {...register(`items.${indice}.cantidad`)}
-          />
-        </Campo>
-
-        <Campo
-          id={`items.${indice}.precio`}
-          etiqueta="Precio"
-          error={erroresItem?.precio?.message}
-          ayuda={
-            precioCambiado && precioDeCatalogo !== null
-              ? `Catálogo: ${formatARS(precioDeCatalogo)}`
-              : undefined
-          }
-        >
+        <Campo id={`items.${indice}.modo_piezas`} etiqueta="Se cobra por">
           <Controller
             control={control}
-            name={`items.${indice}.precio`}
+            name={`items.${indice}.modo_piezas`}
             render={({ field }) => (
-              <InputMonto
-                id={`items.${indice}.precio`}
-                className="w-36"
+              <SelectSimple
+                id={`items.${indice}.modo_piezas`}
                 valor={field.value}
-                onCambio={field.onChange}
-                invalido={Boolean(erroresItem?.precio)}
+                onCambio={(v) => cambiarModo(v ?? "cantidad")}
+                ancho="w-40"
+                opciones={[
+                  { valor: "cantidad", etiqueta: "Cantidad" },
+                  { valor: "piezas", etiqueta: "Piezas" },
+                  { valor: "arcada", etiqueta: "Arcada" },
+                ]}
               />
             )}
           />
         </Campo>
 
-        <Campo id={`items.${indice}.piezas`} etiqueta="Piezas">
-          <div className="flex items-center gap-2">
+        {modo === "arcada" && (
+          <Campo
+            id={`items.${indice}.piezas`}
+            etiqueta="Arcada"
+            error={erroresItem?.piezas?.message}
+          >
             <Controller
               control={control}
               name={`items.${indice}.piezas`}
               render={({ field }) => (
-                <div className="w-64">
-                  <Odontograma
-                    id={`items.${indice}.piezas`}
-                    compacto
-                    valor={field.value}
-                    onCambio={field.onChange}
-                  />
-                </div>
+                <SelectSimple
+                  id={`items.${indice}.piezas`}
+                  valor={piezas.modo === "arcada" ? piezas.arcada : ""}
+                  onCambio={(v) => field.onChange(v ? `arcada:${v}` : null)}
+                  ancho="w-40"
+                  placeholder="Elegí la arcada"
+                  opciones={[
+                    { valor: "sup", etiqueta: "Superior" },
+                    { valor: "inf", etiqueta: "Inferior" },
+                    { valor: "ambas", etiqueta: "Ambas" },
+                  ]}
+                />
               )}
             />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-expanded={abierto}
-                    onClick={() => setAbierto((v) => !v)}
-                  />
-                }
-              >
-                <ChevronDown />
-              </TooltipTrigger>
-              <TooltipContent>Elegir piezas en el odontograma</TooltipContent>
-            </Tooltip>
-          </div>
-        </Campo>
+          </Campo>
+        )}
 
-        <div className="ml-auto flex items-center gap-3">
+        {modo === "piezas" ? (
+          <Campo id={`items.${indice}.cantidad`} etiqueta="Cantidad">
+            <p className="flex h-9 items-center text-sm tabular-nums">
+              {elegidas === 0 ? "—" : `${elegidas} ${elegidas === 1 ? "pieza" : "piezas"}`}
+            </p>
+          </Campo>
+        ) : (
+          <Campo
+            id={`items.${indice}.cantidad`}
+            etiqueta="Cantidad"
+            requerido
+            error={erroresItem?.cantidad?.message}
+          >
+            <Input
+              id={`items.${indice}.cantidad`}
+              inputMode="numeric"
+              className="w-24"
+              aria-invalid={Boolean(erroresItem?.cantidad)}
+              {...register(`items.${indice}.cantidad`)}
+            />
+          </Campo>
+        )}
+
+        <div className="ml-auto flex items-start gap-3">
           <p className="flex flex-col items-end">
             <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
               Subtotal
@@ -611,34 +848,33 @@ function FilaItem({
         </div>
       </div>
 
-      {abierto && (
-        <Controller
-          control={control}
-          name={`items.${indice}.piezas`}
-          render={({ field }) => (
-            <Odontograma
-              id={`items.${indice}.piezas.grilla`}
-              mostrarCampo={false}
-              valor={field.value}
-              onCambio={field.onChange}
-            />
+      {modo === "piezas" && (
+        <>
+          <Controller
+            control={control}
+            name={`items.${indice}.piezas`}
+            render={({ field }) => (
+              <Odontograma
+                id={`items.${indice}.piezas.grilla`}
+                valor={field.value}
+                onCambio={field.onChange}
+                mostrarCampo={false}
+                mostrarModos={false}
+                agruparAlClickear
+              />
+            )}
+          />
+
+          <p className="text-xs text-ink-3">
+            {elegidas === 0
+              ? "Clickeá las piezas en el diagrama. Tres o más seguidas se agrupan en un tramo."
+              : `Piezas: ${formatPieza(item?.piezas)} · ${elegidas} ${elegidas === 1 ? "pieza" : "piezas"}`}
+          </p>
+
+          {erroresItem?.piezas?.message && (
+            <p className="text-xs text-danger">{erroresItem.piezas.message}</p>
           )}
-        />
-      )}
-
-      {!abierto && item?.piezas && (
-        <p className="text-xs text-ink-3">
-          Piezas: {formatPieza(item.piezas)}
-          {piezasElegidas !== null && ` · ${piezasElegidas} ${piezasElegidas === 1 ? "pieza" : "piezas"}`}
-        </p>
-      )}
-
-      {noCoinciden && (
-        <p className="text-xs text-warn">
-          La cantidad dice {cantidad} y elegiste {piezasElegidas}{" "}
-          {piezasElegidas === 1 ? "pieza" : "piezas"}. Si es un trabajo que se hace pieza por
-          pieza, revisá antes de guardar.
-        </p>
+        </>
       )}
     </div>
   );

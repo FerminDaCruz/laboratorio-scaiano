@@ -557,6 +557,88 @@ Reglas:
 
 ---
 
+### [2026-10-23] Etapa E14 · La cantidad sale de las piezas
+
+Pedido de Fer: en un ítem no se carga la cantidad y las piezas por separado. O se escribe
+una cantidad fija, o se eligen las piezas en el diagrama y la cantidad se deduce.
+
+**Hecho**
+- Cada trabajo de la orden tiene ahora **Se cobra por**: Cantidad, Piezas o Arcada
+  - Cantidad: un número escrito, sin piezas
+  - Piezas: la grilla clickeable, sin teclado, y la cantidad es el número de piezas
+  - Arcada: superior, inferior o ambas, con cantidad escrita (no son piezas exactas)
+- `agruparEnPartes` en `src/lib/fdi.ts`: las corridas de tres o más piezas contiguas se
+  vuelven un tramo y el resto queda suelto. `3.3 3.4 3.5 3.6 3.7 4.4 4.7` → `3.3-3.7,4.4,4.7`
+- Las partes se ordenan por número de pieza, no por el orden del dibujo: `3.3-3.7,4.3-4.7`
+  y no `4.3-4.7,3.3-3.7`. Es como se dicta y como se lee en la comanda
+- El odontograma acepta dos props nuevas: `mostrarModos` (oculta pestañas y arcada) y
+  `agruparAlClickear` (clickear suma o saca una pieza y los tramos se arman solos)
+- Se fue el input de texto de piezas de la fila, y con él la advertencia de cantidad que no
+  coincidía: ya no puede pasar
+- Probado con node sobre el módulo compilado: 11 casos de agrupado, todos pasan, incluidos
+  los dos ejemplos que dio Fer
+
+**Archivos**
+- `src/lib/fdi.ts` · `src/components/odontograma/odontograma.tsx` ·
+  `src/components/ordenes/formulario-orden.tsx`
+- `docs/design-system.md` (§8) · `CLAUDE.md` (regla de dominio nueva)
+
+**Decisiones**
+- El umbral del tramo es tres piezas: con dos se muestran sueltas. Es lo que pidió Fer y es
+  como se dicta un puente
+- Un tramo puede cruzar la línea media (4.1 y 3.1 son vecinos) pero nunca mezcla arcadas ni
+  permanentes con temporales
+- La arcada completa sigue existiendo como tercer modo: la cantidad ahí se escribe, porque
+  no son piezas exactas
+- Sin cambios en la base: `orden_items.piezas` guarda el mismo texto de siempre
+
+**Pendiente**
+- Sigue sin probarse en el navegador: Docker apagado, y las dos migraciones de E14 sin aplicar
+
+---
+
+### [2026-10-20] Etapa E14 · El descuento es una línea, no otro precio
+
+Devolución de Fer sobre la primera versión: el input de precio por ítem desalineaba la fila
+(el texto "Catálogo: $X" empujaba el campo hacia arriba) y, sobre todo, mezclaba dos cosas
+distintas: lo que vale el trabajo y lo que se acordó cobrar por esa orden.
+
+**Hecho**
+- Se fue el precio por ítem. El precio sale del catálogo, siempre, congelado a la fecha
+  de la orden
+- La orden tiene un **ajuste**: descuento o plus, en porcentaje o en monto fijo, con motivo
+  obligatorio. Columnas nuevas `ajuste`, `ajuste_pct` y `ajuste_motivo`
+- `crear_orden` y `editar_orden` reciben el ajuste y recalculan el total; el trigger de
+  campos inmutables ahora también protege esas tres columnas
+- El formulario muestra el desglose en vivo: Trabajos, Descuento o Plus, Total estimado
+- El panel de la orden y el remito imprimen el desglose por orden: el trabajo, la línea de
+  descuento o plus con su motivo, y el subtotal
+- Pruebas reescritas: `supabase/tests/ajustes.sql`, 15 comprobaciones
+
+**Archivos**
+- `supabase/migrations/20261020090000_ajuste_en_la_orden.sql`
+- `src/components/ordenes/formulario-orden.tsx` · `datos.ts` · `consultas.ts` ·
+  `panel-orden.tsx` · `src/app/ordenes/editar/page.tsx`
+- `src/components/remitos/consultas.ts` · `src/components/documentos/remito.tsx`
+- `src/lib/tipos.ts` · `CLAUDE.md` · `docs/etapas.md`
+
+**Decisiones**
+- El ajuste se guarda resuelto en pesos y, si se pactó en porcentaje, también se guarda el
+  porcentaje: así el ticket puede decir "descuento 10%" sin recalcular nada
+- El signo lleva la intención: negativo descuenta, positivo suma. Una sola columna
+- La fila del ajuste usa `items-start`, no `items-end`: un campo con error o ayuda ya no
+  corre a los demás de lugar. Era el origen de lo que se veía feo
+- La regla de `CLAUDE.md` volvió a "el precio sale del catálogo", con el ajuste como la
+  única forma de mover plata en una orden
+
+**Pendiente / bloqueado**
+- Docker sigue apagado: ni esta migración ni la anterior se aplicaron, y las pruebas no
+  corrieron
+- Falta regenerar `database.types.ts` y borrar `rpcNueva` de `src/lib/supabase.ts`
+- Falta probar las pantallas en el navegador
+
+---
+
 ### [2026-10-19] Etapa E8 · El remito lleva el domicilio del doctor
 
 **Hecho**

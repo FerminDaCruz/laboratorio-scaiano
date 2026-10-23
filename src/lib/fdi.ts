@@ -155,10 +155,10 @@ export function normalizarPartes(partes: Parte[]): Parte[] {
     limpias.push(parte);
   }
 
-  const orden = ordenAnatomico();
-  return limpias.sort(
-    (a, b) => orden.indexOf(piezasDeParte(a)[0]) - orden.indexOf(piezasDeParte(b)[0]),
-  );
+  // Ordenadas por número de pieza, que es como se dictan y como se leen en la
+  // comanda: "del 3.3 al 3.7, más el 4.4". No es el orden del dibujo (1.8 → 1.1).
+  const menor = (parte: Parte) => [...piezasDeParte(parte)].sort()[0] ?? "";
+  return limpias.sort((a, b) => menor(a).localeCompare(menor(b)));
 }
 
 function desdePartes(partes: Parte[]): Piezas {
@@ -291,6 +291,51 @@ export function piezasSeleccionadas(valor: Piezas): string[] {
 export function parteQueContiene(valor: Piezas, pieza: string): Parte | null {
   if (valor.modo !== "partes") return null;
   return valor.partes.find((p) => piezasDeParte(p).includes(pieza)) ?? null;
+}
+
+/**
+ * Agrupa una selección de piezas en partes: las corridas de tres o más piezas
+ * contiguas se vuelven un tramo y el resto queda como piezas sueltas. Es lo que
+ * hace el laboratorio al dictar un trabajo: "del 3.3 al 3.7, más el 4.4 y el 4.7".
+ *
+ * La contigüidad se mide sobre el orden de la boca, así que un tramo puede cruzar
+ * la línea media (4.1 y 3.1 son vecinos) pero nunca mezcla arcadas ni permanentes
+ * con temporales.
+ */
+export function agruparEnPartes(piezas: string[]): Parte[] {
+  const elegidas = new Set(piezas);
+  const partes: Parte[] = [];
+
+  for (const arcada of ["sup", "inf"] as const) {
+    for (const temporales of [false, true]) {
+      const secuencia = secuenciaArcada(arcada, temporales);
+      let corrida: string[] = [];
+
+      const cerrar = () => {
+        if (corrida.length === 0) return;
+        if (corrida.length >= 3) {
+          const tramo = crearTramo(corrida[0], corrida[corrida.length - 1]);
+          if (tramo) partes.push(tramo);
+        } else {
+          for (const pieza of corrida) partes.push({ tipo: "pieza", pieza });
+        }
+        corrida = [];
+      };
+
+      for (const pieza of secuencia) {
+        if (elegidas.has(pieza)) corrida.push(pieza);
+        else cerrar();
+      }
+      cerrar();
+    }
+  }
+
+  return normalizarPartes(partes);
+}
+
+/** La selección de piezas ya agrupada, lista para guardar. */
+export function piezasDesdeSeleccion(piezas: string[]): Piezas {
+  return desdePartes(agruparEnPartes(piezas));
 }
 
 /** Agrega o saca una pieza suelta. Si la pieza estaba dentro de un tramo, saca el tramo. */

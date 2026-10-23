@@ -178,6 +178,22 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
             ))}
           </ul>
         )}
+        {orden.ajuste !== 0 && (
+          <>
+            <p className="flex justify-between pt-1 text-xs text-ink-2">
+              <span>Trabajos</span>
+              <span className="tabular-nums">{formatARS(orden.total - orden.ajuste)}</span>
+            </p>
+            <p className="flex justify-between text-xs text-ink-2">
+              <span>
+                {orden.ajuste < 0 ? "Descuento" : "Plus"}
+                {orden.ajuste_pct !== null ? ` ${Math.abs(orden.ajuste_pct)}%` : ""}
+                {orden.ajuste_motivo ? ` · ${orden.ajuste_motivo}` : ""}
+              </span>
+              <span className="tabular-nums">{formatARS(orden.ajuste)}</span>
+            </p>
+          </>
+        )}
         <p className="flex justify-between pt-1">
           <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">Total</span>
           <span className="text-lg font-semibold tabular-nums">{formatARS(orden.total)}</span>
