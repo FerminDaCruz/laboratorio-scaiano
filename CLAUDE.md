@@ -166,6 +166,9 @@ docs/
 
 - **La orden tiene ítems.** Una OT puede llevar varios trabajos, cada uno con su
   cantidad, sus piezas dentales y su precio congelado.
+- **La OT no tiene circuito de producción.** Tres estados y nada más: `ingresada` (cargada
+  y ya lista para facturar), `entregada` (la pone `emitir_remito`) y `anulada` (la pone
+  `anular_orden`). El estado no se cambia desde la pantalla.
 - **Notación FDI.** Cuadrante 1 = superior derecho del paciente (1.8→1.1), 2 = superior
   izquierdo, 3 = inferior izquierdo, 4 = inferior derecho. Temporales: cuadrantes 5-8.
   El campo de piezas debe aceptar cuatro formas: sin pieza, piezas sueltas, tramo

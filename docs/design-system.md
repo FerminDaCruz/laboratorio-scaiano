@@ -182,9 +182,7 @@ Fondo `-soft`, texto del color pleno, radio `sm`, 11px, peso 600.
 
 | Estado de la OT | Color |
 |---|---|
-| Ingresada | neutral (`surface-alt` / `ink-2`) |
-| En proceso | `warn` |
-| Terminada | `info` |
+| Ingresada (cargada, lista para facturar) | neutral (`surface-alt` / `ink-2`) |
 | Entregada | `ok` |
 | Anulada | `danger` |
 

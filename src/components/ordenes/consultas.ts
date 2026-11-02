@@ -14,7 +14,7 @@ export type ItemDeOrden = OrdenItem & { trabajo: { codigo: string; titulo: strin
 export type FiltrosOrdenes = {
   texto: string;
   doctorId: string;
-  estado: EstadoOrden | "todos" | "en_curso";
+  estado: EstadoOrden | "todos";
   desde: string;
   hasta: string;
   pagina: number;
@@ -47,8 +47,7 @@ export async function listarOrdenes(
     .select(SELECCION, { count: "exact" })
     .order("numero", { ascending: false });
 
-  if (f.estado === "en_curso") consulta = consulta.in("estado", ["ingresada", "en_proceso", "terminada"]);
-  else if (f.estado !== "todos") consulta = consulta.eq("estado", f.estado);
+  if (f.estado !== "todos") consulta = consulta.eq("estado", f.estado);
 
   if (f.doctorId) consulta = consulta.eq("doctor_id", Number(f.doctorId));
   if (f.desde) consulta = consulta.gte("fecha", f.desde);
@@ -92,9 +91,21 @@ export async function listarItemsDeOrden(ordenId: number): Promise<ItemDeOrden[]
   });
 }
 
-export async function cambiarEstadoOrden(id: number, estado: EstadoOrden): Promise<void> {
-  const { error } = await getSupabase().from("ordenes").update({ estado }).eq("id", id);
+/** Las comandas cargadas que todavía no entraron en un remito, para la bandeja. */
+export async function listarOrdenesSinFacturar(
+  doctorId: number | null,
+): Promise<OrdenConDoctor[]> {
+  let consulta = getSupabase()
+    .from("ordenes")
+    .select(SELECCION)
+    .eq("estado", "ingresada")
+    .is("remito_id", null)
+    .order("numero");
+  if (doctorId !== null) consulta = consulta.eq("doctor_id", doctorId);
+
+  const { data, error } = await consulta;
   if (error) throw error;
+  return (data ?? []).map((d) => aOrden(d as FilaCruda));
 }
 
 /** Para la comanda (E7) y el escaneo (E8): busca por número de OT. */

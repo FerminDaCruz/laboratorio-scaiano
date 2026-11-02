@@ -63,8 +63,6 @@ export async function resumenTablero(anio: number, mes: number): Promise<Resumen
 
   const ordenesPorEstado: Record<EstadoOrden, number> = {
     ingresada: 0,
-    en_proceso: 0,
-    terminada: 0,
     entregada: 0,
     anulada: 0,
   };

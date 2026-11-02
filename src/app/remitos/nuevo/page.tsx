@@ -1,14 +1,21 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { listarDoctoresParaCombo } from "@/components/doctores/datos";
 import { Campo } from "@/components/formulario/campo";
+import { Combobox } from "@/components/formulario/combobox";
 import { InputMonto } from "@/components/formulario/input-monto";
 import { SelectSimple } from "@/components/formulario/select-simple";
+import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { emitirRemito } from "@/components/remitos/consultas";
-import { buscarOrdenPorNumero, type OrdenConDoctor } from "@/components/ordenes/consultas";
+import {
+  buscarOrdenPorNumero,
+  listarOrdenesSinFacturar,
+  type OrdenConDoctor,
+} from "@/components/ordenes/consultas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,9 +28,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useConsulta } from "@/hooks/use-consulta";
 import { formatFechaCorta, formatOT } from "@/lib/format";
 import { centavosDesdeTexto, formatARS } from "@/lib/money";
 import { interpretarEscaneo, useFocoDeEscaneo } from "@/lib/scanner";
+import type { Doctor } from "@/lib/tipos";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
@@ -44,6 +53,7 @@ function NuevoRemito() {
   useFocoDeEscaneo(campo);
 
   const [texto, setTexto] = useState("");
+  const [doctorFiltro, setDoctorFiltro] = useState("");
   const [fecha, setFecha] = useState(hoy());
   const [bandeja, setBandeja] = useState<OrdenConDoctor[]>([]);
   const [emitiendo, setEmitiendo] = useState(false);
@@ -59,6 +69,29 @@ function NuevoRemito() {
   const ajuste =
     tipoAjuste === "" ? 0 : (centavosDesdeTexto(importeAjuste) ?? 0) * (tipoAjuste === "descuento" ? -1 : 1);
   const total = trabajos + ajuste;
+
+  // Un remito lleva órdenes de un solo doctor: con la bandeja empezada, el doctor ya está
+  // definido y el filtro deja de decidir.
+  const doctorEfectivo = doctorId !== null ? String(doctorId) : doctorFiltro;
+
+  const { consulta: consultaDoctores } = useConsulta<Doctor[]>(
+    () => listarDoctoresParaCombo(),
+    [],
+    "No se pudieron cargar los doctores.",
+  );
+  const doctores = consultaDoctores.estado === "listo" ? consultaDoctores.datos : [];
+
+  const { consulta: consultaPendientes, recargar: recargarPendientes } = useConsulta<
+    OrdenConDoctor[]
+  >(
+    () => listarOrdenesSinFacturar(doctorEfectivo === "" ? null : Number(doctorEfectivo)),
+    [doctorEfectivo],
+    "No se pudieron cargar las comandas sin facturar.",
+  );
+  // Lo que ya está en la bandeja no se ofrece de nuevo.
+  const pendientes = (consultaPendientes.estado === "listo" ? consultaPendientes.datos : []).filter(
+    (o) => !bandeja.some((b) => b.id === o.id),
+  );
 
   // Se puede llegar con las OT ya puestas: desde una orden (?ot=3) o al corregir
   // un remito anulado (?ots=3,4).
@@ -118,14 +151,23 @@ function NuevoRemito() {
       toast.error(`La OT ${formatOT(numero)} está anulada.`);
       return;
     }
+    agregarOrden(orden);
+  }
+
+  /** Suma una orden ya cargada: la eligió de la lista o la trajo el escaneo. */
+  function agregarOrden(orden: OrdenConDoctor) {
+    if (bandeja.some((o) => o.id === orden.id)) {
+      toast.error(`La OT ${formatOT(orden.numero)} ya está en la bandeja.`);
+      return;
+    }
     if (doctorId !== null && orden.doctor_id !== doctorId) {
       toast.error(
-        `La OT ${formatOT(numero)} es de ${orden.doctor?.nombre ?? "otro doctor"}. Un remito lleva órdenes de un solo doctor.`,
+        `La OT ${formatOT(orden.numero)} es de ${orden.doctor?.nombre ?? "otro doctor"}. Un remito lleva órdenes de un solo doctor.`,
       );
       return;
     }
 
-    setBandeja((actual) => [...actual, orden as OrdenConDoctor]);
+    setBandeja((actual) => [...actual, orden]);
   }
 
   async function emitir() {
@@ -190,7 +232,7 @@ function NuevoRemito() {
         <Campo
           id="escaneo"
           etiqueta="Escaneá la comanda"
-          ayuda="También podés escribir el número de OT y apretar Enter. CMD-EMITIR emite, CMD-LIMPIAR vacía la bandeja."
+          ayuda="Opcional: también podés elegirla de la lista. Escribí el número de OT y apretá Enter; CMD-EMITIR emite y CMD-LIMPIAR vacía la bandeja."
         >
           <Input
             id="escaneo"
@@ -211,6 +253,102 @@ function NuevoRemito() {
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+            Comandas sin facturar
+          </h2>
+          {pendientes.length > 0 && doctorEfectivo !== "" && (
+            <Button variant="outline" onClick={() => setBandeja((a) => [...a, ...pendientes])}>
+              Agregar todas
+            </Button>
+          )}
+        </div>
+
+        {doctorId === null ? (
+          <div className="max-w-[320px]">
+            <Campo id="doctor_filtro" etiqueta="Doctor" ayuda="Vacío muestra las de todos.">
+              <Combobox
+                id="doctor_filtro"
+                valor={doctorFiltro || null}
+                onCambio={(v) => setDoctorFiltro(v ?? "")}
+                placeholder="Todos los doctores"
+                opciones={doctores.map((d) => ({
+                  valor: String(d.id),
+                  etiqueta: d.nombre,
+                  busqueda: String(d.ficha),
+                  detalle: `ficha ${d.ficha}`,
+                }))}
+              />
+            </Campo>
+          </div>
+        ) : (
+          <p className="text-xs text-ink-2">
+            Un remito lleva órdenes de un solo doctor, así que se muestran solo las de{" "}
+            {doctor?.nombre ?? "este doctor"}.
+          </p>
+        )}
+
+        {consultaPendientes.estado === "cargando" && <Skeleton className="h-24 w-full" />}
+        {consultaPendientes.estado === "error" && (
+          <ErrorConsulta mensaje={consultaPendientes.mensaje} onReintentar={recargarPendientes} />
+        )}
+        {consultaPendientes.estado === "listo" && (
+          <div className="overflow-hidden rounded-md border border-border bg-surface">
+            {pendientes.length === 0 ? (
+              <p className="p-4 text-ink-3">
+                {bandeja.length > 0
+                  ? "No quedan comandas sin facturar de este doctor."
+                  : "No hay comandas sin facturar."}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24">OT</TableHead>
+                    <TableHead className="w-24">Fecha</TableHead>
+                    {doctorEfectivo === "" && <TableHead>Doctor</TableHead>}
+                    <TableHead>Paciente</TableHead>
+                    <TableHead className="text-right">Importe</TableHead>
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendientes.map((orden) => (
+                    <TableRow key={orden.id}>
+                      <TableCell className="font-mono">{formatOT(orden.numero)}</TableCell>
+                      <TableCell>{formatFechaCorta(orden.fecha)}</TableCell>
+                      {doctorEfectivo === "" && <TableCell>{orden.doctor?.nombre ?? "—"}</TableCell>}
+                      <TableCell>{orden.paciente}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatARS(orden.total)}
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Agregar la OT ${formatOT(orden.numero)} a la bandeja`}
+                                onClick={() => agregarOrden(orden)}
+                              />
+                            }
+                          >
+                            <Plus />
+                          </TooltipTrigger>
+                          <TooltipContent>Agregar a la bandeja</TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
             Bandeja {doctor ? `· ${doctor.nombre}` : ""}
           </h2>
           <Campo id="fecha" etiqueta="Fecha del remito">
@@ -227,7 +365,8 @@ function NuevoRemito() {
         <div className="overflow-hidden rounded-md border border-border bg-surface">
           {bandeja.length === 0 ? (
             <p className="p-4 text-ink-3">
-              La bandeja está vacía. Escaneá las comandas de las órdenes que vas a entregar.
+              La bandeja está vacía. Elegí las comandas de la lista de arriba o escaneá las
+              órdenes que vas a entregar.
             </p>
           ) : (
             <Table>

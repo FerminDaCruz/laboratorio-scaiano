@@ -131,7 +131,7 @@ export async function listarLineasDeRemito(remitoId: number): Promise<LineaRemit
     .sort((a, b) => (a.orden?.numero ?? 0) - (b.orden?.numero ?? 0));
 }
 
-/** Órdenes terminadas o en curso de un doctor que todavía no entraron en un remito. */
+/** Órdenes de un doctor que todavía no entraron en un remito. */
 export async function ordenesSinRemitir(doctorId: number) {
   const { data, error } = await getSupabase()
     .from("ordenes")

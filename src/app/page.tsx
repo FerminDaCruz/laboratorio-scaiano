@@ -78,7 +78,6 @@ export default function TableroPage() {
     r.facturadoMesAnterior === 0
       ? null
       : Math.round((diferencia / r.facturadoMesAnterior) * 100);
-  const enCurso = r.ordenesPorEstado.ingresada + r.ordenesPorEstado.en_proceso;
 
   return (
     <div className="flex flex-col gap-6">
@@ -99,9 +98,9 @@ export default function TableroPage() {
           tono={r.deudaTotal > 0 ? "warn" : undefined}
         />
         <Tarjeta
-          etiqueta="Órdenes en curso"
-          valor={formatNumero(enCurso)}
-          detalle={`${formatNumero(r.ordenesPorEstado.terminada)} terminadas esperando entrega`}
+          etiqueta="Órdenes a facturar"
+          valor={formatNumero(r.ordenesPorEstado.ingresada)}
+          detalle="Cargadas y todavía sin remitir"
         />
         <Tarjeta
           etiqueta="Atrasadas"

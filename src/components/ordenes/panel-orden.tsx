@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Printer, Receipt, Undo2 } from "lucide-react";
+import { Pencil, Printer, Receipt } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -27,27 +27,14 @@ import { useConsulta } from "@/hooks/use-consulta";
 import { formatPieza } from "@/lib/fdi";
 import { formatFechaCorta, formatFechaLarga, formatHora, formatOT } from "@/lib/format";
 import { formatARS } from "@/lib/money";
-import { ETIQUETA_ESTADO, ETIQUETA_SEXO, VARIANTE_ESTADO, type EstadoOrden, type Sexo } from "@/lib/tipos";
+import { ETIQUETA_ESTADO, ETIQUETA_SEXO, VARIANTE_ESTADO, type Sexo } from "@/lib/tipos";
 import {
-  cambiarEstadoOrden,
   estaAtrasada,
   listarItemsDeOrden,
   type ItemDeOrden,
   type OrdenConDoctor,
 } from "./consultas";
 import { anularOrden } from "./datos";
-
-/** El circuito de producción. La entrega la hace el remito, no este panel. */
-const SIGUIENTE: Partial<Record<EstadoOrden, { estado: EstadoOrden; etiqueta: string }>> = {
-  ingresada: { estado: "en_proceso", etiqueta: "Pasar a en proceso" },
-  en_proceso: { estado: "terminada", etiqueta: "Marcar terminada" },
-};
-
-/** Volver atrás, para cuando alguien marcó de más. */
-const ANTERIOR: Partial<Record<EstadoOrden, { estado: EstadoOrden; etiqueta: string }>> = {
-  en_proceso: { estado: "ingresada", etiqueta: "Volver a ingresada" },
-  terminada: { estado: "en_proceso", etiqueta: "Volver a en proceso" },
-};
 
 export function PanelOrden({
   orden,
@@ -85,8 +72,6 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
   const [motivo, setMotivo] = useState("");
   const [anulando, setAnulando] = useState(false);
 
-  const siguiente = SIGUIENTE[orden.estado];
-  const anterior = ANTERIOR[orden.estado];
   const atrasada = estaAtrasada(orden);
   // Mientras no esté en un remito se puede editar, anular y facturar.
   const abierta = orden.remito_id === null && orden.estado !== "anulada";
@@ -106,18 +91,6 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
       );
     } finally {
       setAnulando(false);
-    }
-  }
-
-  async function pasarA(estado: EstadoOrden) {
-    try {
-      await cambiarEstadoOrden(orden.id, estado);
-      toast.success(`Orden ${ETIQUETA_ESTADO[estado].toLowerCase()}`);
-      onCambio();
-    } catch {
-      toast.error("No se pudo cambiar el estado. Revisá la conexión y probá de nuevo.", {
-        duration: Infinity,
-      });
     }
   }
 
@@ -223,13 +196,6 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
           </Button>
         )}
 
-        {anterior && abierta && (
-          <Button variant="outline" onClick={() => pasarA(anterior.estado)}>
-            <Undo2 data-icon="inline-start" />
-            {anterior.etiqueta}
-          </Button>
-        )}
-
         {abierta && esAdmin && (
           <AlertDialog>
             <AlertDialogTrigger render={<Button variant="destructive" disabled={anulando} />}>
@@ -267,9 +233,7 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
           </AlertDialog>
         )}
 
-        {siguiente && <Button onClick={() => pasarA(siguiente.estado)}>{siguiente.etiqueta}</Button>}
-
-        {orden.estado === "terminada" && (
+        {abierta && (
           <Button nativeButton={false} render={<Link href={`/remitos/nuevo?ot=${orden.numero}`} />}>
             <Receipt data-icon="inline-start" />
             Facturar

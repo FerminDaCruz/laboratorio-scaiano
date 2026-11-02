@@ -4,20 +4,14 @@
 
 import type { Centavos } from "./money";
 
-export type EstadoOrden = "ingresada" | "en_proceso" | "terminada" | "entregada" | "anulada";
+// No hay circuito de producción: una orden cargada ya está lista para facturar. El estado
+// no se mueve a mano, lo pone el remito ('entregada') o la anulación ('anulada').
+export type EstadoOrden = "ingresada" | "entregada" | "anulada";
 
-export const ESTADOS_ORDEN: EstadoOrden[] = [
-  "ingresada",
-  "en_proceso",
-  "terminada",
-  "entregada",
-  "anulada",
-];
+export const ESTADOS_ORDEN: EstadoOrden[] = ["ingresada", "entregada", "anulada"];
 
 export const ETIQUETA_ESTADO: Record<EstadoOrden, string> = {
   ingresada: "Ingresada",
-  en_proceso: "En proceso",
-  terminada: "Terminada",
   entregada: "Entregada",
   anulada: "Anulada",
 };
@@ -25,8 +19,6 @@ export const ETIQUETA_ESTADO: Record<EstadoOrden, string> = {
 // Colores de §4 del design system. El color significa estado, no decoración.
 export const VARIANTE_ESTADO: Record<EstadoOrden, "neutral" | "ok" | "warn" | "danger" | "info"> = {
   ingresada: "neutral",
-  en_proceso: "warn",
-  terminada: "info",
   entregada: "ok",
   anulada: "danger",
 };

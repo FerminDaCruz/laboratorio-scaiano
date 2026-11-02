@@ -1,10 +1,13 @@
 "use client";
 
+import { Printer } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { listarDoctoresParaCombo, listarObrasSociales } from "@/components/doctores/datos";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { FormularioOrden } from "@/components/ordenes/formulario-orden";
 import { listarTrabajos } from "@/components/trabajos/datos";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatOT } from "@/lib/format";
@@ -28,7 +31,14 @@ export default function NuevaOrdenPage() {
         <p className="flex items-center gap-3 rounded-md border border-ok bg-ok-soft px-3 py-2 text-ok">
           <span className="font-semibold">Orden creada</span>
           <span className="font-mono">OT {formatOT(ultima.numero)}</span>
-          {/* TODO(E7): acá va el botón para imprimir la comanda. */}
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href={`/ordenes/comanda?ot=${ultima.numero}`} />}
+          >
+            <Printer data-icon="inline-start" />
+            Imprimir comanda
+          </Button>
         </p>
       )}
 

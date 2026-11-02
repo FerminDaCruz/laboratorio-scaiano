@@ -156,7 +156,7 @@ sin tocar el mouse.**
 
 - Listado con el patrón §5A: filtros por doctor, estado, rango de fechas, buscador
 - Panel lateral con el detalle de la orden
-- Cambio de estado: ingresada → en proceso → terminada
+- Sin circuito de producción: una orden cargada ya está lista para facturar (E14)
 - Vista separada de entregadas y facturadas
 - Alerta visual cuando la fecha de entrega comprometida ya pasó
 

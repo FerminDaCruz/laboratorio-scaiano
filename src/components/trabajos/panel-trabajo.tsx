@@ -6,7 +6,13 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { CODIGO_DUPLICADO } from "@/components/doctores/datos";
-import { AccionesFormulario, Campo, Dato, SeccionFormulario } from "@/components/formulario/campo";
+import {
+  AccionesFormulario,
+  Campo,
+  Dato,
+  NotaCamposRequeridos,
+  SeccionFormulario,
+} from "@/components/formulario/campo";
 import { InputMonto } from "@/components/formulario/input-monto";
 import {
   AlertDialog,
@@ -250,7 +256,13 @@ function FormularioDePrecio({
       onSubmit={handleSubmit(guardar)}
       onKeyDown={alTeclearEnFormulario}
     >
-      <Campo id="precio" etiqueta="Precio" error={errors.precio?.message} ayuda="Por ejemplo 185.000,50">
+      <Campo
+        id="precio"
+        etiqueta="Precio"
+        error={errors.precio?.message}
+        ayuda="Por ejemplo 185.000,50"
+        requerido
+      >
         <Controller
           control={control}
           name="precio"
@@ -266,9 +278,15 @@ function FormularioDePrecio({
           )}
         />
       </Campo>
-      <Campo id="vigente_desde" etiqueta="Vigente desde" error={errors.vigente_desde?.message}>
+      <Campo
+        id="vigente_desde"
+        etiqueta="Vigente desde"
+        error={errors.vigente_desde?.message}
+        requerido
+      >
         <Input id="vigente_desde" type="date" {...register("vigente_desde")} />
       </Campo>
+      <NotaCamposRequeridos />
       <AccionesFormulario onCancelar={onCancelar} guardando={isSubmitting} etiqueta="Agregar precio" />
 
       <AlertDialog open={aReemplazar !== null} onOpenChange={(abierto) => !abierto && setAReemplazar(null)}>
@@ -380,6 +398,7 @@ function FormularioDeTrabajo({
         etiqueta="Código"
         error={errors.codigo?.message}
         ayuda="Es lo que se tipea al cargar una orden."
+        requerido
       >
         <Input
           id="codigo"
@@ -389,7 +408,7 @@ function FormularioDeTrabajo({
           {...register("codigo")}
         />
       </Campo>
-      <Campo id="titulo" etiqueta="Título" error={errors.titulo?.message}>
+      <Campo id="titulo" etiqueta="Título" error={errors.titulo?.message} requerido>
         <Input id="titulo" aria-invalid={errors.titulo ? true : undefined} {...register("titulo")} />
       </Campo>
       <Campo id="descripcion" etiqueta="Descripción">
@@ -423,6 +442,8 @@ function FormularioDeTrabajo({
           Trabajo activo
         </label>
       </div>
+
+      <NotaCamposRequeridos />
 
       <AccionesFormulario onCancelar={onCancelar} guardando={isSubmitting} />
     </form>

@@ -11,7 +11,12 @@ import {
   type PagoListado,
 } from "@/components/cc/consultas";
 import { listarDoctoresParaCombo } from "@/components/doctores/datos";
-import { AccionesFormulario, Campo, SeccionFormulario } from "@/components/formulario/campo";
+import {
+  AccionesFormulario,
+  Campo,
+  NotaCamposRequeridos,
+  SeccionFormulario,
+} from "@/components/formulario/campo";
 import { Combobox } from "@/components/formulario/combobox";
 import { InputMonto } from "@/components/formulario/input-monto";
 import { SelectSimple } from "@/components/formulario/select-simple";
@@ -54,7 +59,11 @@ function Pagos() {
   const [referencia, setReferencia] = useState("");
   const [manual, setManual] = useState(false);
   const [elegidas, setElegidas] = useState<number[]>([]);
-  const [errores, setErrores] = useState<{ doctor?: string; importe?: string }>({});
+  const [errores, setErrores] = useState<{
+    doctor?: string;
+    importe?: string;
+    fecha?: string;
+  }>({});
   const [guardando, setGuardando] = useState(false);
 
   const { consulta: consultaDoctores } = useConsulta<Doctor[]>(
@@ -85,6 +94,7 @@ function Pagos() {
     if (!doctorId) nuevos.doctor = "Elegí el doctor.";
     if (centavos === null) nuevos.importe = "El importe no es un monto válido.";
     else if (centavos <= 0) nuevos.importe = "El importe tiene que ser mayor que cero.";
+    if (!fecha) nuevos.fecha = "Poné la fecha del pago.";
     setErrores(nuevos);
     if (Object.keys(nuevos).length > 0 || centavos === null) return;
 
@@ -124,7 +134,7 @@ function Pagos() {
       <form className="flex flex-col gap-6" noValidate onSubmit={guardar} onKeyDown={alTeclearEnFormulario}>
         <SeccionFormulario titulo="Pago" primera>
           <div className="flex max-w-[640px] flex-col gap-3">
-            <Campo id="doctor" etiqueta="Doctor" error={errores.doctor}>
+            <Campo id="doctor" etiqueta="Doctor" error={errores.doctor} requerido>
               <Combobox
                 id="doctor"
                 valor={doctorId || null}
@@ -144,7 +154,13 @@ function Pagos() {
             </Campo>
 
             <div className="flex flex-wrap gap-3">
-              <Campo id="importe" etiqueta="Importe" error={errores.importe} ayuda="Por ejemplo 100.000,50">
+              <Campo
+                id="importe"
+                etiqueta="Importe"
+                error={errores.importe}
+                ayuda="Por ejemplo 100.000,50"
+                requerido
+              >
                 <InputMonto
                   id="importe"
                   className="w-44"
@@ -153,12 +169,13 @@ function Pagos() {
                   onCambio={setImporte}
                 />
               </Campo>
-              <Campo id="fecha" etiqueta="Fecha">
+              <Campo id="fecha" etiqueta="Fecha" error={errores.fecha} requerido>
                 <Input
                   id="fecha"
                   type="date"
                   className="w-44"
                   value={fecha}
+                  aria-invalid={errores.fecha ? true : undefined}
                   onChange={(e) => setFecha(e.target.value)}
                 />
               </Campo>
@@ -250,6 +267,8 @@ function Pagos() {
             )}
           </div>
         </SeccionFormulario>
+
+        <NotaCamposRequeridos />
 
         <AccionesFormulario
           onCancelar={() => {

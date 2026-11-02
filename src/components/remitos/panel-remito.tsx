@@ -197,7 +197,7 @@ function DetalleRemito({ remito, onCambio }: { remito: RemitoConDoctor; onCambio
                 <AlertDialogTitle>Anular el remito {formatRemito(remito.numero)}</AlertDialogTitle>
                 <AlertDialogDescription>
                   Se genera un contra-asiento por {formatARS(remito.total)} en la cuenta corriente
-                  del doctor y las {remito.lineas} órdenes vuelven a quedar terminadas. El remito y
+                  del doctor y las {remito.lineas} órdenes vuelven a quedar sin facturar. El remito y
                   su asiento original no se borran.
                 </AlertDialogDescription>
               </AlertDialogHeader>

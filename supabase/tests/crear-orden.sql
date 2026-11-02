@@ -59,8 +59,15 @@ exception when others then
 end;
 $$;
 
-\echo '--- 6. el cliente sí puede cambiar el estado (E6)'
-update public.ordenes set estado = 'en_proceso' where numero = 1;
+\echo '--- 6. el cliente ya no puede cambiar el estado (E14)'
+do $$
+begin
+  update public.ordenes set estado = 'entregada' where numero = 1;
+  raise exception 'ERROR: el update deberia haber fallado';
+exception when others then
+  raise notice 'bloqueado como corresponde: %', sqlerrm;
+end;
+$$;
 select numero, estado from public.ordenes;
 
 \echo '--- 7. una orden sin items falla'

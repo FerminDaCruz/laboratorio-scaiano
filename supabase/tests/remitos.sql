@@ -25,7 +25,7 @@ select public.crear_orden(
   json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CEC'), 'cantidad', 1))::jsonb
 ) as orden_3;
 
-update public.ordenes set estado = 'terminada';
+-- No hace falta preparar ningún estado: una orden cargada ya se puede facturar.
 
 \echo '--- 1. mezclar doctores en la bandeja falla'
 do $$
@@ -67,7 +67,7 @@ exception when others then
 end;
 $$;
 
-\echo '--- 6. anular el remito: contra-asiento, saldo 0 y OT de vuelta en terminada'
+\echo '--- 6. anular el remito: contra-asiento, saldo 0 y OT de vuelta sin facturar'
 select public.anular_remito((select id from public.remitos limit 1), 'Prueba de anulación') as anulacion;
 select m.tipo, m.importe, m.anula_movimiento_id is not null as es_contra from public.movimientos_cc m order by m.id;
 select s.saldo as saldo_despues_de_anular from public.v_saldos_doctor s

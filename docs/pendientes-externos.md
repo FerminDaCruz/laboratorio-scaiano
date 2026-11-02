@@ -27,6 +27,10 @@ sigue con lo que sí puede hacer.
 - [ ] Instalar la CLI de Supabase y vincular el proyecto (`supabase link`).
 - [ ] **Aplicar las migraciones.** Claude escribe el SQL; correrlo contra la base es tuyo,
       sea con `supabase db push` o pegándolo en el editor SQL del panel.
+      Las de E14 ya están aplicadas (02/11/2026) con
+      `supabase db query --linked -f supabase/e14-aplicar-en-el-panel.sql`. Ese archivo junta
+      las dos migraciones de E14 y se puede volver a correr sin romper nada; termina con una
+      tabla de control que tiene que dar ocho "ok".
 - [ ] Crear el primer usuario del sistema desde el panel de Supabase.
 
 ### Durante todo el proyecto

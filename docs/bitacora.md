@@ -557,6 +557,188 @@ Reglas:
 
 ---
 
+### [2026-11-02] Etapa E14 · Se va el circuito de producción
+
+Pedido de Fer: el laboratorio no usa "en proceso" ni "terminada". Marcarlas era trabajo de
+carga que no cambiaba ninguna decisión. Ahora una comanda recién creada ya se puede facturar.
+
+**Hecho**
+- Una OT tiene tres estados: `ingresada` (cargada y lista para facturar), `entregada` (la
+  pone `emitir_remito`) y `anulada` (la pone `anular_orden`)
+- Se fueron los botones de "Pasar a en proceso", "Marcar terminada" y la vuelta atrás, del
+  listado y del panel de la orden, junto con la función `cambiarEstadoOrden`
+- El botón **Facturar** aparece en cuanto la orden existe, en el listado y en el panel, en
+  lugar de esperar a que estuviera terminada
+- Filtros del listado: Sin facturar (el que se abre por defecto), Entregadas, Anuladas,
+  Todas. Se fue la vista "En curso", que ya no distinguía nada
+- El tablero cambió la tarjeta "Órdenes en curso" por "Órdenes a facturar"
+- `anular_remito` devuelve las OT a `ingresada`, y el trigger de campos inmutables ahora
+  bloquea **cualquier** cambio de estado hecho desde la pantalla
+
+**Archivos**
+- `supabase/migrations/20261102090000_sin_circuito_de_produccion.sql` · `src/lib/tipos.ts` ·
+  `src/components/ordenes/consultas.ts` · `src/app/ordenes/page.tsx` ·
+  `src/components/ordenes/panel-orden.tsx` · `src/app/page.tsx` ·
+  `src/components/reportes/consultas.ts` · `supabase/tests/crear-orden.sql` ·
+  `supabase/tests/remitos.sql` · `CLAUDE.md` · `docs/design-system.md` · `docs/etapas.md`
+
+**Decisiones**
+- El valor en la base sigue siendo `ingresada` y la etiqueta del badge sigue diciendo
+  "Ingresada": describe lo que pasó con la orden. El "a facturar" quedó donde se decide algo
+  —el filtro del listado y la tarjeta del tablero—, para no renombrar un valor que está en
+  índices y funciones
+- Las órdenes que estuvieran en los estados viejos pasan a `ingresada`. En la base de la nube
+  no había ninguna: las cuatro que hay están entregadas
+- La prueba 6 de `crear-orden.sql` estaba escrita al revés de lo que ahora corresponde (daba
+  por bueno que el cliente cambiara el estado); ahora verifica que esté bloqueado
+
+**Aplicado**
+- Corrida contra la base de la nube el 02/11/2026 con
+  `supabase db query --linked -f supabase/migrations/20261102090000_sin_circuito_de_produccion.sql`.
+  El primer intento lo frenó el entorno de la sesión por ser la base de producción; Fer lo
+  autorizó y salió en el segundo
+- Cinco controles en verde: el check de estado con tres valores y sin los viejos,
+  `anular_remito` devolviendo las OT a `ingresada`, el trigger bloqueando cualquier cambio de
+  estado, el índice de entregas mirando solo `ingresada`, y ninguna orden en `en_proceso` ni
+  `terminada` (no había ninguna antes de correrla tampoco)
+- Queda registrada en `supabase_migrations.schema_migrations`, así que un `db push` no la repite
+
+**Para el usuario**
+- Redeploy en Cloudflare Pages, para que la pantalla acompañe a la base
+
+---
+
+### [2026-11-02] Etapa E8 · Las comandas a facturar se eligen de una lista
+
+Pedido de Fer: para armar un remito no hace falta saberse el número de OT. La lectora sigue
+siendo el camino rápido, pero ahora se puede elegir con el mouse.
+
+**Hecho**
+- En Nuevo remito, arriba de la bandeja, una sección "Comandas sin facturar" con las órdenes
+  cargadas que no entraron en ningún remito: OT, fecha, doctor, paciente e importe
+- Un botón `+` por fila la suma a la bandeja, y "Agregar todas" suma las del doctor de una vez
+- Combobox de doctor para filtrar la lista; vacío muestra las de todos, con la columna Doctor
+- Cuando la bandeja ya tiene algo, el doctor queda fijo y la lista se limita a sus órdenes:
+  un remito lleva órdenes de un solo doctor
+- Lo que ya está en la bandeja no se vuelve a ofrecer, y al vaciarla reaparece
+- El campo de escaneo sigue igual, ahora aclarando que elegir de la lista es la alternativa
+
+**Archivos**
+- `src/app/remitos/nuevo/page.tsx` · `src/components/ordenes/consultas.ts`
+
+**Decisiones**
+- La lista se arma con una consulta nueva, `listarOrdenesSinFacturar`, que trae la orden
+  completa: al elegirla se agrega sin volver a pedirla al servidor, como sí hace el escaneo
+  (que solo tiene el número)
+- `agregarOT` (escaneo) y la lista comparten las validaciones en `agregarOrden`: duplicada y
+  doctor distinto se controlan en un solo lugar
+- Sin paginado: son las órdenes sin facturar de un doctor, no un listado histórico. Si el
+  volumen real lo pide, se agrega
+
+---
+
+### [2026-11-02] Interfaz · Asteriscos en el resto de los formularios
+
+Lo que quedó pendiente de la entrada del 23/10: ahí se marcaron los campos obligatorios de
+la orden y los otros formularios quedaron sin marcar.
+
+**Hecho**
+- Pagos: Doctor, Importe y Fecha con asterisco. Medio tiene un valor por defecto y no se
+  puede dejar vacío, así que no lleva
+- Aumento general de precios: Porcentaje y Vigente desde
+- Trabajo: Código y Título. Descripción y Precio inicial siguen siendo opcionales, y el
+  precio inicial ya lo decía en su ayuda
+- Precio de un trabajo: Precio y Vigente desde
+- Obra social: Código y Nombre
+- Los cinco formularios cierran con `<NotaCamposRequeridos />`, el mismo componente de la
+  orden y de la ficha del doctor
+
+**Archivos**
+- `src/app/pagos/page.tsx` · `src/app/trabajos/precios/page.tsx` ·
+  `src/components/trabajos/panel-trabajo.tsx` ·
+  `src/components/obras-sociales/panel-obra-social.tsx`
+
+**Decisiones**
+- El asterisco va donde el usuario puede dejar el campo vacío y no debe. Un select con valor
+  por defecto (Medio de pago, el switch de activo) no lo lleva: no hay forma de vaciarlo
+- La fecha del pago no tenía validación, así que marcarla con asterisco habría sido mentira:
+  se agregó el control de que no esté vacía, con el mensaje debajo del campo como el resto
+
+---
+
+### [2026-11-02] Etapa E7 · El cartel de "orden creada" lleva a la comanda
+
+**Hecho**
+- Al guardar una orden, el cartel verde que muestra el número de OT ahora trae el botón
+  "Imprimir comanda", que abre `/ordenes/comanda?ot=N`
+- Se fue el `TODO(E7)` que marcaba ese hueco desde que se armó la pantalla
+
+**Archivos**
+- `src/app/ordenes/nueva/page.tsx`
+
+**Decisiones**
+- Botón `ghost`, que es la variante de §4 para una acción dentro de una barra, y enlace de
+  verdad (`render={<Link />}`) en lugar de un `router.push`: así se puede abrir en otra
+  pestaña y seguir cargando órdenes
+- La comanda no se imprime sola al guardar. Primero se mira en pantalla; la impresión real
+  se ajusta en E13, con la impresora de 80 mm delante
+
+---
+
+### [2026-11-02] Etapa E14 · Un solo archivo para aplicar E14 en la base
+
+Las dos migraciones de E14 son incómodas de aplicar a mano: la 19 usa `add column` sin
+`if not exists`, así que si ya se corrió, repetirla falla y deja la 20 sin aplicar. Había
+que acordarse de cuál ya estaba.
+
+**Hecho**
+- `supabase/e14-aplicar-en-el-panel.sql`: las dos migraciones juntas, reescritas para poder
+  correrse de nuevo sin romper nada (columnas con `if not exists`, funciones con
+  `create or replace`, y `drop function if exists` de las firmas viejas de `crear_orden`,
+  `editar_orden` y `emitir_remito` para que no queden dos sobrecargas)
+- Termina con `notify pgrst, 'reload schema'` y una tabla de control de ocho filas que tienen
+  que decir "ok": las columnas nuevas, las firmas de las cinco funciones y que no haya
+  sobrecargas duplicadas
+- También marca las dos migraciones como aplicadas en `supabase_migrations.schema_migrations`,
+  si esa tabla existe, para que un `supabase db push` futuro no intente repetirlas
+
+**Archivos**
+- `supabase/e14-aplicar-en-el-panel.sql` · `docs/pendientes-externos.md`
+
+**Decisiones**
+- No va en `supabase/migrations/`: no es una migración nueva, es la misma cosa en formato
+  para pegar. Las migraciones quedan como están, que son el historial real
+- Tampoco en `supabase/snippets/`, que está en `.gitignore`
+
+**Aplicado**
+- Se corrió contra la base de la nube el 02/11/2026, a pedido de Fer, con
+  `supabase db query --linked -f supabase/e14-aplicar-en-el-panel.sql`
+- La base tenía la migración 19 aplicada y la 20 no (`ordenes.motivo_anulacion` y
+  `remitos.ajuste` existían, `ordenes.ajuste` no), que es exactamente el caso incómodo para
+  el que se escribió el archivo
+- Las ocho filas de control dieron "ok": columnas nuevas, `crear_orden` con 13 argumentos,
+  `editar_orden` con 12, `emitir_remito` con 5, `anular_orden` y `ajuste_de_orden`, sin
+  sobrecargas duplicadas
+- Las tres órdenes que ya existían quedaron con `ajuste = 0.00` y el total sin cambios
+- Las cuatro funciones responden por la API con su firma nueva, así que PostgREST recargó el
+  esquema; y las cuatro rechazan al anónimo con `42501` antes de escribir nada
+
+**Pendiente / bloqueado**
+- Las funciones quedan con `execute` para `anon`, no solo para `authenticated`: las
+  migraciones revocan de `public`, pero Supabase tiene default privileges que se lo dan a
+  `anon` igual. No es un agujero —`es_staff()` y `es_admin()` cortan antes de tocar datos,
+  se probó— pero convendría revocarlo. Viene de las migraciones originales, no de E14
+- La suite `supabase/tests/ajustes.sql` sigue sin correrse: necesita una base local y Docker
+  está apagado
+
+**Para el usuario**
+- Falta el redeploy en Cloudflare Pages
+- Ahora que la base tiene el esquema nuevo se pueden regenerar los tipos
+  (`supabase gen types typescript --linked > src/lib/database.types.ts`) y borrar el helper
+  `rpcNueva` de `src/lib/supabase.ts` con los casts que lo acompañan
+
+---
+
 ### [2026-10-23] Etapa E14 · El color se escribe, no se elige de una lista
 
 El laboratorio trabaja con varias guías de color y no todas son Vita Classic: atar el campo

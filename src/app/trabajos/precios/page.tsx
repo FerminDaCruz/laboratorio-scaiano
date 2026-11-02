@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Campo, SeccionFormulario } from "@/components/formulario/campo";
+import { Campo, NotaCamposRequeridos, SeccionFormulario } from "@/components/formulario/campo";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { agregarPreciosEnLote, listarTrabajos } from "@/components/trabajos/datos";
 import {
@@ -103,6 +103,7 @@ export default function ActualizarPreciosPage() {
               id="porcentaje"
               etiqueta="Porcentaje"
               ayuda="Positivo aumenta, negativo baja. Por ejemplo 12,5 o -5."
+              requerido
             >
               <Input
                 id="porcentaje"
@@ -113,7 +114,7 @@ export default function ActualizarPreciosPage() {
                 onChange={(e) => setPorcentaje(e.target.value)}
               />
             </Campo>
-            <Campo id="vigencia" etiqueta="Vigente desde">
+            <Campo id="vigencia" etiqueta="Vigente desde" requerido>
               <Input
                 id="vigencia"
                 type="date"
@@ -122,6 +123,7 @@ export default function ActualizarPreciosPage() {
                 onChange={(e) => setVigenteDesde(e.target.value)}
               />
             </Campo>
+            <NotaCamposRequeridos />
           </div>
         </SeccionFormulario>
       </div>

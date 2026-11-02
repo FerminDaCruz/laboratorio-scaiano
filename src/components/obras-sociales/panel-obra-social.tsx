@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { AccionesFormulario, Campo } from "@/components/formulario/campo";
+import { AccionesFormulario, Campo, NotaCamposRequeridos } from "@/components/formulario/campo";
 import { CODIGO_DUPLICADO, guardarObraSocial } from "@/components/doctores/datos";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -97,10 +97,16 @@ function FormularioObraSocial({
       onSubmit={handleSubmit(guardar)}
       onKeyDown={alTeclearEnFormulario}
     >
-      <Campo id="codigo" etiqueta="Código" error={errors.codigo?.message} ayuda="Corto, como OSDE o IOMA.">
+      <Campo
+        id="codigo"
+        etiqueta="Código"
+        error={errors.codigo?.message}
+        ayuda="Corto, como OSDE o IOMA."
+        requerido
+      >
         <Input id="codigo" autoFocus aria-invalid={errors.codigo ? true : undefined} {...register("codigo")} />
       </Campo>
-      <Campo id="nombre" etiqueta="Nombre" error={errors.nombre?.message}>
+      <Campo id="nombre" etiqueta="Nombre" error={errors.nombre?.message} requerido>
         <Input id="nombre" aria-invalid={errors.nombre ? true : undefined} {...register("nombre")} />
       </Campo>
       <div className="flex items-center gap-3 pt-1">
@@ -115,6 +121,8 @@ function FormularioObraSocial({
           Obra social activa
         </label>
       </div>
+
+      <NotaCamposRequeridos />
 
       <AccionesFormulario onCancelar={onCancelar} guardando={isSubmitting} />
     </form>
