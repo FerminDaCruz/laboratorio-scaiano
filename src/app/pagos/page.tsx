@@ -4,13 +4,14 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import {
-  deudasPendientes,
   listarPagos,
   registrarPago,
-  type DeudaPendiente,
+  trabajosDelMes,
   type PagoListado,
+  type TrabajoDelMes,
 } from "@/components/cc/consultas";
-import { listarDoctoresParaCombo } from "@/components/doctores/datos";
+import { TablaTrabajosDelMes } from "@/components/cc/tabla-trabajos-del-mes";
+import { listarDoctoresParaCombo, saldoDeDoctor } from "@/components/doctores/datos";
 import {
   AccionesFormulario,
   Campo,
@@ -21,7 +22,6 @@ import { Combobox } from "@/components/formulario/combobox";
 import { InputMonto } from "@/components/formulario/input-monto";
 import { SelectSimple } from "@/components/formulario/select-simple";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,8 +35,8 @@ import {
 } from "@/components/ui/table";
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
 import { useConsulta } from "@/hooks/use-consulta";
-import { formatFechaCorta, formatRemito } from "@/lib/format";
-import { centavosDesdeTexto, formatARS } from "@/lib/money";
+import { formatFechaCorta } from "@/lib/format";
+import { centavosDesdeTexto, formatARS, type Centavos } from "@/lib/money";
 import { ETIQUETA_MEDIO, MEDIOS_PAGO, type Doctor, type MedioPago } from "@/lib/tipos";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -57,8 +57,6 @@ function Pagos() {
   const [fecha, setFecha] = useState(hoy());
   const [medio, setMedio] = useState<MedioPago>("efectivo");
   const [referencia, setReferencia] = useState("");
-  const [manual, setManual] = useState(false);
-  const [elegidas, setElegidas] = useState<number[]>([]);
   const [errores, setErrores] = useState<{
     doctor?: string;
     importe?: string;
@@ -73,13 +71,21 @@ function Pagos() {
   );
   const doctores = consultaDoctores.estado === "listo" ? consultaDoctores.datos : [];
 
-  const { consulta: consultaDeudas, recargar: recargarDeudas } = useConsulta<DeudaPendiente[]>(
-    () => (doctorId ? deudasPendientes(Number(doctorId)) : Promise.resolve([])),
+  const { consulta: consultaCuenta, recargar: recargarCuenta } = useConsulta<{
+    trabajos: TrabajoDelMes[];
+    saldo: Centavos;
+  } | null>(
+    async () => {
+      if (!doctorId) return null;
+      const [trabajos, saldo] = await Promise.all([
+        trabajosDelMes(Number(doctorId)),
+        saldoDeDoctor(Number(doctorId)),
+      ]);
+      return { trabajos, saldo };
+    },
     [doctorId],
-    "No se pudieron cargar las deudas del doctor.",
+    "No se pudo cargar la cuenta del doctor. Revisá la conexión y probá de nuevo.",
   );
-  const deudas = consultaDeudas.estado === "listo" ? consultaDeudas.datos : [];
-  const totalPendiente = deudas.reduce((suma, d) => suma + d.pendiente, 0);
 
   const { consulta: consultaPagos, recargar: recargarPagos } = useConsulta<PagoListado[]>(
     () => listarPagos(),
@@ -106,7 +112,6 @@ function Pagos() {
         fecha,
         medio,
         referencia: referencia.trim() === "" ? null : referencia.trim(),
-        deudaIds: manual ? elegidas : null,
       });
 
       toast.success(
@@ -116,10 +121,8 @@ function Pagos() {
       );
       setImporte("");
       setReferencia("");
-      setElegidas([]);
-      setManual(false);
       recargarPagos();
-      recargarDeudas();
+      recargarCuenta();
     } catch {
       toast.error("No se pudo registrar el pago. Revisá la conexión y probá de nuevo.", {
         duration: Infinity,
@@ -138,10 +141,7 @@ function Pagos() {
               <Combobox
                 id="doctor"
                 valor={doctorId || null}
-                onCambio={(v) => {
-                  setDoctorId(v ?? "");
-                  setElegidas([]);
-                }}
+                onCambio={(v) => setDoctorId(v ?? "")}
                 invalido={Boolean(errores.doctor)}
                 placeholder="Buscar por nombre o ficha…"
                 opciones={doctores.map((d) => ({
@@ -196,74 +196,25 @@ function Pagos() {
           </div>
         </SeccionFormulario>
 
-        <SeccionFormulario titulo="Imputación">
+        <SeccionFormulario titulo="Trabajos del mes">
           <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={manual} onCheckedChange={(v) => setManual(v === true)} />
-              Elegir a mano a qué remitos se aplica
-            </label>
+            <p className="text-ink-3">
+              El pago se descuenta de la deuda total del doctor, no de un trabajo en particular.
+              Si paga de más, lo que sobra queda a su favor para lo próximo que se le facture.
+            </p>
 
-            {!manual && (
-              <p className="text-ink-3">
-                Se aplica al remito más viejo primero. Lo que sobre queda como saldo a favor y se usa
-                en el próximo remito.
-              </p>
+            {doctorId === "" && <p className="text-ink-3">Elegí el doctor para ver su cuenta.</p>}
+            {doctorId !== "" && consultaCuenta.estado === "cargando" && (
+              <Skeleton className="h-32 w-full" />
             )}
-
-            {doctorId && (
-              <div className="overflow-hidden rounded-md border border-border bg-surface">
-                {deudas.length === 0 ? (
-                  <p className="p-4 text-ink-3">Este doctor no tiene deudas pendientes.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {manual && <TableHead className="w-12" />}
-                        <TableHead className="w-24">Fecha</TableHead>
-                        <TableHead className="w-28">Remito</TableHead>
-                        <TableHead>Pacientes</TableHead>
-                        <TableHead className="text-right">Pendiente</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {deudas.map((d) => (
-                        <TableRow key={d.id}>
-                          {manual && (
-                            <TableCell>
-                              <Checkbox
-                                aria-label={`Imputar al remito ${d.remitoNumero ?? d.id}`}
-                                checked={elegidas.includes(d.id)}
-                                onCheckedChange={(v) =>
-                                  setElegidas((actual) =>
-                                    v === true ? [...actual, d.id] : actual.filter((id) => id !== d.id),
-                                  )
-                                }
-                              />
-                            </TableCell>
-                          )}
-                          <TableCell>{formatFechaCorta(d.fecha)}</TableCell>
-                          <TableCell className="font-mono">
-                            {d.remitoNumero ? formatRemito(d.remitoNumero) : "—"}
-                          </TableCell>
-                          <TableCell>{d.pacientes.join(" · ") || "—"}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatARS(d.pendiente)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
+            {consultaCuenta.estado === "error" && (
+              <ErrorConsulta mensaje={consultaCuenta.mensaje} onReintentar={recargarCuenta} />
             )}
-
-            {doctorId && deudas.length > 0 && (
-              <p className="flex justify-end gap-3 text-xs text-ink-2">
-                <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-                  Deuda total
-                </span>
-                <span className="text-sm font-semibold text-ink tabular-nums">
-                  {formatARS(totalPendiente)}
-                </span>
-              </p>
+            {consultaCuenta.estado === "listo" && consultaCuenta.datos && (
+              <TablaTrabajosDelMes
+                trabajos={consultaCuenta.datos.trabajos}
+                saldo={consultaCuenta.datos.saldo}
+              />
             )}
           </div>
         </SeccionFormulario>
@@ -274,7 +225,6 @@ function Pagos() {
           onCancelar={() => {
             setImporte("");
             setReferencia("");
-            setElegidas([]);
             setErrores({});
           }}
           guardando={guardando}

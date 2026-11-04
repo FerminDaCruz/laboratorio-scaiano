@@ -1129,3 +1129,194 @@ cómo facturar ni los botones de estado, y necesitaba poder cambiar importes.
   quedan alineadas entre sí
 
 ---
+
+### [2026-11-03] Etapa E9 · El pago se descuenta del total, no de cada trabajo
+
+Pedido de Fer: elegir a qué remito se imputa un pago dejaba trabajos "a medio pagar", y el
+laboratorio no trabaja así. El pago baja la deuda total del doctor.
+
+**Hecho**
+- En Pagos se fue la casilla "Elegir a mano a qué remitos se aplica" y la tabla de deudas
+  con su columna Pendiente
+- En su lugar, en Pagos y en el detalle de Cuenta corriente, la sección **Trabajos del mes**:
+  las órdenes entregadas al doctor en el mes en curso (fecha, remito, OT, paciente,
+  trabajos) con su **importe completo**, y debajo "Facturado este mes" y la deuda total
+  (o el saldo a favor)
+- `deudasPendientes` y el parámetro `deudaIds` de `registrarPago` se borraron del front
+
+**Archivos**
+- `src/components/cc/consultas.ts` — `trabajosDelMes`, `registrarPago` sin imputación manual
+- `src/components/cc/tabla-trabajos-del-mes.tsx` — la tabla compartida
+- `src/app/pagos/page.tsx` · `src/app/cuenta-corriente/page.tsx`
+- `CLAUDE.md` — regla de dominio de los pagos
+
+**Decisiones**
+- La función `registrar_pago` no se tocó: por dentro sigue imputando de lo más viejo a lo
+  más nuevo, que es lo que alimenta las columnas 0-30 / 31-60 / 61-90 / +90 del listado de
+  cuentas. Lo que se fue es la imputación elegida a mano y el "pendiente" por trabajo en
+  pantalla. El parámetro `p_deuda_ids` queda en la base sin uso
+- "Trabajos del mes" lista lo **entregado** (con remito no anulado), que es lo que entra en
+  la cuenta corriente. Una orden cargada sin facturar todavía no es deuda
+- El cierre del mes no necesitó cambios: `cerrar_periodo` ya congela, por doctor, el saldo
+  anterior, lo facturado, lo pagado y el saldo final. Nunca guardó deudas por trabajo
+
+---
+
+### [2026-11-03] Etapa E14 · El precio se modifica por trabajo, no sobre el total
+
+Pedido de Fer: el descuento o plus sobre el total de la orden se va. Cada trabajo arranca
+con su precio de catálogo × cantidad y sobre ese subtotal se puede escribir el precio final,
+o sumar o restar un porcentaje o un monto fijo. El motivo es opcional.
+
+**Hecho**
+- Migración `20261103090000_ajuste_por_trabajo.sql`: `orden_items` suma `ajuste_tipo`
+  (`precio` · `porcentaje` · `monto`), `ajuste_valor`, `ajuste`, `ajuste_motivo` y la
+  columna generada `importe` (subtotal + ajuste, nunca negativa). `subtotal` sigue siendo el
+  de catálogo, así el ítem guarda cuánto valía y cuánto se cobró
+- `crear_orden` y `editar_orden` vuelven a la firma sin ajuste de la orden: la modificación
+  viaja dentro de cada ítem. Las dos usan `cargar_items_de_orden`, que congela el precio y
+  resuelve la modificación en un solo lugar (no se puede llamar desde la API)
+- Formulario de orden: el subtotal de cada trabajo es un botón; al clickearlo se abre
+  "Modificar precio" con **Precio final** ya cargado con el subtotal, y se puede cambiar a
+  Descuento o Plus en % o en $. Debajo del importe queda "catálogo $ X" cuando difieren.
+  El pie muestra Precio de catálogo, Modificaciones y Total estimado
+- Panel de la orden: cada ítem muestra lo que se cobra y, si se modificó, el subtotal de
+  catálogo, cómo se modificó y el motivo
+- Liquidación y reportes suman lo cobrado (`importe`), no el catálogo
+- Pruebas 1 a 7 de `supabase/tests/ajustes.sql` reescritas para la modificación por ítem
+
+**Archivos**
+- `supabase/migrations/20261103090000_ajuste_por_trabajo.sql`
+- `src/components/ordenes/formulario-orden.tsx` · `datos.ts` · `consultas.ts` · `panel-orden.tsx`
+- `src/app/ordenes/nueva/page.tsx` · `src/app/ordenes/editar/page.tsx`
+- `src/components/liquidaciones/consultas.ts` · `src/components/reportes/consultas.ts`
+- `src/lib/tipos.ts` · `supabase/tests/ajustes.sql` · `CLAUDE.md` · `docs/etapas.md`
+
+**Decisiones**
+- Las columnas de ajuste de `ordenes` se quedan: las órdenes ya facturadas con un ajuste
+  sobre el total lo siguen mostrando en el panel y en el remito. Las nuevas lo dejan en cero
+- Si se edita una orden abierta que tenía ajuste sobre el total, el formulario avisa que al
+  guardar se quita y que, si corresponde, se cargue en el trabajo. Pasarlo solo a un
+  trabajo habría sido adivinar a cuál correspondía
+- El precio final queda fijo aunque después cambie la cantidad: es "esto se cobra por este
+  trabajo". El porcentaje y el monto sí acompañan a la cantidad
+- El descuento o recargo **del remito** no cambió: sigue sobre el total y con motivo
+  obligatorio
+- El remito impreso no detalla la modificación de cada trabajo: muestra el importe de cada
+  OT, que ya la incluye. El detalle está en el panel de la orden
+
+**Pendiente / bloqueado**
+- La migración **no está aplicada** en la base: hasta que se aplique, guardar una orden falla
+- `supabase/tests/ajustes.sql` no se corrió: Docker estaba apagado
+- Falta regenerar `database.types.ts`; mientras tanto `rpcNueva` sigue haciendo falta
+- No se probó en el navegador: sin la migración no se puede guardar una orden
+
+**Para el usuario**
+- Aplicar la migración (pedirlo y se corre con `supabase db query --linked -f …`)
+- Redeploy en Cloudflare Pages después de aplicarla, no antes
+
+---
+
+### [2026-11-03] Etapa E3 · El código del trabajo se arma solo
+
+**Hecho**
+- Al crear un trabajo, el Título va primero y el Código se completa solo a partir de él: la
+  inicial de cada palabra con los números tal cual ("Corona ZR monolítica" → `CZM`,
+  "Bandeja s/ 4 implantes" → `B4I`); una sola palabra da sus cuatro primeras letras
+- Antes de proponerlo se mira en la base que no esté usado; si lo está, se le agrega un
+  número (`CZM2`, `CZM3`…)
+- El campo se puede cambiar a mano, y en cuanto se toca deja de proponerse
+
+**Archivos**
+- `src/components/trabajos/datos.ts` — `codigoDesdeTitulo`, `codigoLibre`
+- `src/components/trabajos/panel-trabajo.tsx`
+
+**Decisiones**
+- Se descartan las palabras de relleno ("de", "con", "s/", "p/"…) para que el código se
+  parezca a los que ya tiene el catálogo
+- Si dos personas crean a la vez un trabajo con el mismo código, la restricción única de la
+  tabla lo frena y el error aparece debajo del campo, como antes
+
+---
+
+### [2026-11-03] Etapa E5 · El combo de trabajos carga de a tandas
+
+**Hecho**
+- Nueva y Editar orden ya no precargan el catálogo entero de trabajos
+- El combo de trabajo trae 20, y al llegar al final de la lista (con la rueda o con las
+  flechas) trae los 20 siguientes, y así
+- Busca en la base al tipear **dos** letras, por título o código, sin que importen los
+  acentos ("protesis" encuentra "Prótesis")
+- Cada opción muestra el código y el precio vigente; los trabajos sin precio aparecen pero
+  no se pueden elegir
+
+**Archivos**
+- `src/components/ordenes/combobox-trabajo.tsx` — el combo nuevo
+- `src/components/trabajos/datos.ts` — `buscarTrabajosParaOrden`
+- `src/lib/texto.ts` — `patronSinAcentos`, para buscar con `imatch`
+- `docs/design-system.md` — §6, cómo se comporta el combo de trabajo
+
+**Decisiones**
+- Se pide una fila de más por tanda para saber si hay otra, sin contar toda la tabla
+- El combo de doctor sigue igual (precargado, filtra a las tres letras): el pedido era el
+  de trabajos
+- Al editar una orden, el título y el precio de cada ítem salen de la propia orden, así que
+  no hace falta pedir el catálogo para mostrarla
+
+---
+
+### [2026-11-03] Datos · "Modelo impreso" y "Envío" en el catálogo
+
+**Hecho**
+- Dos trabajos nuevos: **Modelo impreso** (`MODI`) y **Envío** (`ENV`), en el seed y en la
+  migración del 03/11 (se insertan solo si no hay uno con ese código o título)
+- Envío arranca con precio $ 0: el importe de cada envío se escribe en la orden con
+  "Modificar precio" → Precio final
+
+**Archivos**
+- `supabase/seed.sql` · `supabase/migrations/20261103090000_ajuste_por_trabajo.sql` ·
+  `docs/pendientes-externos.md`
+
+**Pendiente / bloqueado**
+- Falta el precio del Modelo impreso: sin precio no se puede usar en una orden. Se carga
+  desde Trabajos cuando se sepa
+
+---
+
+### [2026-11-04] Datos · Página que faltaba de la lista de precios, y migraciones aplicadas
+
+**Hecho**
+- Se transcribió la hoja del medio de la lista de precios (de "Corona ZR UEC/Ang" a "Núcleo
+  disilicato/zirconio"), que no estaba en las fotos anteriores. Se renombró a
+  `docs/fuentes/precios-3.jpeg`
+- 34 trabajos nuevos con sus precios de "Marzo 26" (vigentes desde 01/03/2026); los
+  renglones con guion quedan sin precio, como el resto. "Muñón epoxi" está tachado y no se
+  cargó
+- Modelo impreso: $ 25.000. En la nube ya estaba cargado a mano como `MOD`, así que el código
+  quedó `MOD` en todos lados (antes decía `MODI`)
+- "Diferencia error facturación" y "Diferencia piezas" arrancan en $ 0, como Envío: el
+  importe se escribe en la orden
+- Se aplicaron en la nube las migraciones `20261103090000_ajuste_por_trabajo.sql` y
+  `20261104090000_catalogo_pagina_c_n.sql` (con permiso del usuario). Prueba en una
+  transacción deshecha: `crear_orden` con precio final, envío y descuento por porcentaje
+  dio el total esperado; la numeración de OT quedó donde estaba
+- Se regeneró `src/lib/database.types.ts`. `tsc` y `npm run build` pasan
+
+**Archivos**
+- `supabase/migrations/20261104090000_catalogo_pagina_c_n.sql` (nuevo) ·
+  `supabase/migrations/20261103090000_ajuste_por_trabajo.sql` · `supabase/seed.sql` ·
+  `src/lib/database.types.ts` · `docs/fuentes/transcripcion-precios.md` ·
+  `docs/pendientes-externos.md`
+
+**Decisiones**
+- La página nueva, Envío y Modelo impreso se cargan solo desde las migraciones, no desde el
+  seed: las migraciones corren antes y el seed chocaría con los mismos códigos
+- La columna cortada en las fotos anteriores resultó ser una lista anterior a marzo: no se
+  cargó como historial
+
+**Pendiente / bloqueado**
+- Confirmar Guía quirúrgica (se lee 138, la columna anterior dice 45) y Maryland Zr (275,
+  anotado a mano)
+- Redeploy en Cloudflare Pages y prueba en el navegador
+
+---

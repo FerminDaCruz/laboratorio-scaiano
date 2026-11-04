@@ -99,9 +99,22 @@ export type OrdenItem = {
   cantidad: number;
   piezas: string | null;
   precio_unitario: Centavos;
+  /** Precio de catálogo × cantidad, sin modificar. */
   subtotal: Centavos;
   posicion: number;
+  /** Cómo se modificó el precio del trabajo. Null si se cobra el de catálogo. */
+  ajuste_tipo: TipoAjusteItem | null;
+  /** Lo que se escribió: el importe final, o el porcentaje o el monto con signo. */
+  ajuste_valor: number | null;
+  /** Diferencia con el subtotal. Negativo descuenta, positivo suma. */
+  ajuste: Centavos;
+  ajuste_motivo: string | null;
+  /** Lo que se cobra: subtotal + ajuste. */
+  importe: Centavos;
 };
+
+/** precio: se escribió el importe final · porcentaje y monto: se suman o restan. */
+export type TipoAjusteItem = "precio" | "porcentaje" | "monto";
 
 export type Orden = {
   id: number;
@@ -118,7 +131,10 @@ export type Orden = {
   estado: EstadoOrden;
   remito_id: number | null;
   total: Centavos;
-  /** Descuento (negativo) o plus (positivo) de la orden. El total ya lo incluye. */
+  /**
+   * Descuento (negativo) o plus (positivo) sobre el total de la orden. Solo lo tienen las
+   * órdenes cargadas antes del 03/11/2026: ahora el precio se modifica por trabajo.
+   */
   ajuste: Centavos;
   /** El porcentaje acordado, si se pactó así. Null si fue un monto fijo. */
   ajuste_pct: number | null;

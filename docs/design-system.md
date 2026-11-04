@@ -275,8 +275,10 @@ Reglas duras:
   el outline sin reemplazarlo.
 - El orden del DOM es el orden visual. No reordenar con CSS.
 - Ningún flujo requiere el mouse para completarse.
-- Los `select` de doctor y de trabajo usan `command` (combobox con búsqueda), que filtra
-  al tipear tres letras.
+- Los `select` de doctor y de trabajo usan `command` (combobox con búsqueda). El de doctor
+  filtra al tipear tres letras. El de trabajo no precarga el catálogo: trae una tanda, suma
+  la siguiente al llegar al final de la lista con el scroll o las flechas, y busca en la
+  base al tipear dos letras.
 
 ---
 

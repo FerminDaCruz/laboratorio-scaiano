@@ -125,3 +125,12 @@ Mientras tanto: se trabaja con los datos de prueba de los seeds.
   numeración desde ahí.
 - Foto o escaneo de los tres papeles reales (orden, comanda, remito, liquidación) para
   confirmar el formato exacto antes de programar los documentos.
+- ✅ ~~El precio del trabajo **Modelo impreso**~~: $ 25.000, de la página de la lista que
+  faltaba (`docs/fuentes/precios-3.jpeg`). En la nube quedó con el código `MOD`.
+- Confirmar tres renglones de esa página (ver `docs/fuentes/transcripcion-precios.md`):
+  **Guía quirúrgica (impresa)** se lee 138 pero la columna anterior dice 45; **Maryland 1
+  pieza Zr** a 275 sale de una anotación a mano al lado de la cerámica; y **Muñón epoxi**
+  está tachado y no se cargó.
+- Los trabajos **Envío** (`ENV`), **Diferencia error facturación** (`DIFF`) y **Diferencia
+  piezas** (`DIFP`) arrancan en $ 0 a propósito: el importe se escribe en cada orden con
+  "Modificar precio".

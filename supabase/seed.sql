@@ -85,6 +85,10 @@ insert into public.trabajos (codigo, titulo, descripcion) values
   ('INY',     'Servicio inyectado',                   null),
   ('SOL',     'Soldadura',                            null),
   ('TEF',     'Teflón',                               null);
+-- La página del medio de la lista (de "Corona ZR UEC/Ang" a "Núcleo disilicato/zirconio",
+-- con el modelo impreso) y el envío no están acá: los cargan las migraciones
+-- 20261103090000_ajuste_por_trabajo.sql y 20261104090000_catalogo_pagina_c_n.sql,
+-- que corren antes que este archivo.
 
 -- --------------------------------------------------------------- precios
 -- Lista de marzo de 2026. Los trabajos que en el papel no tienen importe

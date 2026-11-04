@@ -6,21 +6,21 @@ import { useState } from "react";
 import { listarDoctoresParaCombo, listarObrasSociales } from "@/components/doctores/datos";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { FormularioOrden } from "@/components/ordenes/formulario-orden";
-import { listarTrabajos } from "@/components/trabajos/datos";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatOT } from "@/lib/format";
-import type { Doctor, ObraSocial, TrabajoConPrecio } from "@/lib/tipos";
+import type { Doctor, ObraSocial } from "@/lib/tipos";
 
-type Catalogos = [Doctor[], TrabajoConPrecio[], ObraSocial[]];
+type Catalogos = [Doctor[], ObraSocial[]];
 
 export default function NuevaOrdenPage() {
   const [ultima, setUltima] = useState<{ id: number; numero: number } | null>(null);
 
-  // El catálogo se precarga una sola vez: tipear no toca la red.
+  // Doctores y obras sociales se precargan una sola vez. Los trabajos no: el combo los
+  // trae de a tandas desde la base.
   const { consulta, recargar } = useConsulta<Catalogos>(
-    () => Promise.all([listarDoctoresParaCombo(), listarTrabajos(false), listarObrasSociales(true)]),
+    () => Promise.all([listarDoctoresParaCombo(), listarObrasSociales(true)]),
     [],
     "No se pudieron cargar los doctores y trabajos. Revisá la conexión y probá de nuevo.",
   );
@@ -55,15 +55,14 @@ export default function NuevaOrdenPage() {
       )}
 
       {consulta.estado === "listo" &&
-        (consulta.datos[0].length === 0 || consulta.datos[1].length === 0 ? (
+        (consulta.datos[0].length === 0 ? (
           <p className="text-ink-3">
-            Antes de cargar una orden hace falta tener doctores y trabajos con precio cargados.
+            Antes de cargar una orden hace falta tener doctores cargados.
           </p>
         ) : (
           <FormularioOrden
             doctores={consulta.datos[0]}
-            trabajos={consulta.datos[1]}
-            obrasSociales={consulta.datos[2]}
+            obrasSociales={consulta.datos[1]}
             onCreada={setUltima}
           />
         ))}

@@ -14,105 +14,104 @@ select set_config('request.jwt.claims',
   json_build_object('sub', '00000000-0000-0000-0000-0000000000c1', 'role', 'authenticated')::text, true);
 set local role authenticated;
 
-\echo '--- 1. una orden con descuento del 10%: el precio del trabajo no cambia'
+\echo '--- 1. precio final escrito a mano: el catálogo queda congelado y la diferencia en el ajuste'
 select public.crear_orden(
   (select id from public.doctores where ficha = 100101),
   'Paciente con descuento',
   json_build_array(
-    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 2)
-  )::jsonb,
-  null, null, null, null, null, current_date, null,
-  'porcentaje', -10, 'Descuento acordado'
-) as orden_con_descuento;
+    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 2,
+                      'ajuste_tipo', 'precio', 'ajuste_valor', 8000.00)
+  )::jsonb
+) as orden_precio_final;
 
-select i.precio_unitario, i.cantidad, o.ajuste, o.ajuste_pct, o.ajuste_motivo, o.total
+-- esperado: precio_unitario 150000, subtotal 300000, ajuste -292000, importe 8000, total 8000, sin motivo
+select i.precio_unitario, i.cantidad, i.subtotal, i.ajuste_tipo, i.ajuste_valor, i.ajuste,
+       i.ajuste_motivo, i.importe, o.total, o.ajuste as ajuste_orden
   from public.ordenes o
   join public.orden_items i on i.orden_id = o.id
  where o.paciente = 'Paciente con descuento';
 
-\echo '--- 2. una orden con un plus de monto fijo'
+\echo '--- 2. plus del 10 % en un trabajo y descuento fijo en otro, con motivo opcional'
 select public.crear_orden(
   (select id from public.doctores where ficha = 100101),
   'Paciente con plus',
   json_build_array(
-    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1)
-  )::jsonb,
-  null, null, null, null, null, current_date, null,
-  'monto', 15000.00, 'Entrega urgente'
+    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1,
+                      'ajuste_tipo', 'porcentaje', 'ajuste_valor', 10, 'ajuste_motivo', 'Entrega rápida'),
+    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1,
+                      'ajuste_tipo', 'monto', 'ajuste_valor', -10000.00)
+  )::jsonb
 ) as orden_con_plus;
 
-select o.ajuste, o.ajuste_pct, o.total,
-       (select sum(subtotal) from public.orden_items where orden_id = o.id) as suma_items
-  from public.ordenes o
- where o.paciente = 'Paciente con plus';
+-- esperado: 165000 (+15000, con motivo) y 140000 (-10000, sin motivo); total 305000
+select i.posicion, i.ajuste_tipo, i.ajuste_valor, i.ajuste, i.ajuste_motivo, i.importe, o.total
+  from public.ordenes o join public.orden_items i on i.orden_id = o.id
+ where o.paciente = 'Paciente con plus'
+ order by i.posicion;
 
-\echo '--- 3. sin ajuste, el total es la suma de los ítems'
+\echo '--- 3. sin modificación, el total es la suma de los subtotales y no queda tipo'
 select public.crear_orden(
   (select id from public.doctores where ficha = 100101),
   'Paciente sin ajuste',
-  json_build_array(
-    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1)
-  )::jsonb
+  json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1))::jsonb
 ) as orden_sin_ajuste;
 
-select ajuste, ajuste_pct, ajuste_motivo, total
-  from public.ordenes where paciente = 'Paciente sin ajuste';
+select i.ajuste_tipo, i.ajuste_valor, i.ajuste, i.importe, o.total
+  from public.ordenes o join public.orden_items i on i.orden_id = o.id
+ where o.paciente = 'Paciente sin ajuste';
 
-\echo '--- 4. un ajuste sin motivo se rechaza'
-do $$
-begin
-  perform public.crear_orden(
-    (select id from public.doctores where ficha = 100101), 'Paciente sin motivo',
-    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'),
-                                       'cantidad', 1))::jsonb,
-    null, null, null, null, null, current_date, null, 'porcentaje', -10, null);
-  raise exception 'ERROR: deberia haber fallado';
-exception when others then
-  raise notice 'rechazado como corresponde: %', sqlerrm;
-end;
-$$;
-
-\echo '--- 5. un porcentaje imposible se rechaza'
+\echo '--- 4. un descuento de más del 100 % se rechaza'
 do $$
 begin
   perform public.crear_orden(
     (select id from public.doctores where ficha = 100101), 'Paciente imposible',
-    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'),
-                                       'cantidad', 1))::jsonb,
-    null, null, null, null, null, current_date, null, 'porcentaje', -150, 'Regalado');
+    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1,
+                                       'ajuste_tipo', 'porcentaje', 'ajuste_valor', -150))::jsonb);
   raise exception 'ERROR: deberia haber fallado';
 exception when others then
   raise notice 'rechazado como corresponde: %', sqlerrm;
 end;
 $$;
 
-\echo '--- 6. un descuento fijo mayor que los trabajos se rechaza'
+\echo '--- 5. un descuento fijo mayor que el trabajo se rechaza'
 do $$
 begin
   perform public.crear_orden(
     (select id from public.doctores where ficha = 100101), 'Paciente regalado',
-    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'),
-                                       'cantidad', 1))::jsonb,
-    null, null, null, null, null, current_date, null, 'monto', -99999999.00, 'Imposible');
+    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1,
+                                       'ajuste_tipo', 'monto', 'ajuste_valor', -99999999.00))::jsonb);
   raise exception 'ERROR: deberia haber fallado';
 exception when others then
   raise notice 'rechazado como corresponde: %', sqlerrm;
 end;
 $$;
 
-\echo '--- 7. editar_orden cambia cantidades, piezas y el ajuste'
+\echo '--- 6. un precio final negativo se rechaza'
+do $$
+begin
+  perform public.crear_orden(
+    (select id from public.doctores where ficha = 100101), 'Paciente negativo',
+    json_build_array(json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 1,
+                                       'ajuste_tipo', 'precio', 'ajuste_valor', -1.00))::jsonb);
+  raise exception 'ERROR: deberia haber fallado';
+exception when others then
+  raise notice 'rechazado como corresponde: %', sqlerrm;
+end;
+$$;
+
+\echo '--- 7. editar_orden cambia cantidades, piezas y la modificación del trabajo'
 select public.editar_orden(
   (select id from public.ordenes where paciente = 'Paciente sin ajuste'),
   'Paciente sin ajuste',
   json_build_array(
-    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'),
-                      'cantidad', 3, 'piezas', '2.4-2.6')
-  )::jsonb,
-  null, null, null, null, null, null,
-  'monto', -30000.00, 'Descuento por cantidad'
+    json_build_object('trabajo_id', (select id from public.trabajos where codigo = 'CMC'), 'cantidad', 3, 'piezas', '2.4-2.6',
+                      'ajuste_tipo', 'monto', 'ajuste_valor', -30000.00,
+                      'ajuste_motivo', 'Descuento por cantidad')
+  )::jsonb
 ) as edicion;
 
-select o.ajuste, o.ajuste_pct, o.ajuste_motivo, o.total, i.cantidad, i.piezas, i.precio_unitario
+-- esperado: subtotal 450000, ajuste -30000, importe 420000, total 420000
+select i.cantidad, i.piezas, i.subtotal, i.ajuste, i.ajuste_motivo, i.importe, o.total
   from public.ordenes o join public.orden_items i on i.orden_id = o.id
  where o.paciente = 'Paciente sin ajuste';
 

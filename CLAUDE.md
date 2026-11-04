@@ -112,8 +112,9 @@ Estas cinco **nunca** se implementan como una secuencia de inserts desde el clie
 Van como funciones PL/pgSQL `SECURITY DEFINER` y se llaman con `supabase.rpc(...)`:
 
 1. `crear_orden` — asigna el número correlativo y **congela los precios del catálogo**.
-   El precio de un trabajo no se escribe a mano: lo que se acuerde de más o de menos va
-   como un **ajuste** sobre el total de la orden. El catálogo nunca se toca desde la orden.
+   El precio de catálogo no se escribe a mano: lo que se acuerde de más o de menos va como
+   una **modificación del subtotal de cada trabajo** (precio final, porcentaje o monto
+   fijo). El catálogo nunca se toca desde la orden.
 2. `emitir_remito` — remito + líneas + asiento contable + marcar OT + imputar, todo en una transacción
 3. `registrar_pago` — asiento + imputación FIFO
 4. `anular_remito` — genera un contra-asiento; **nunca borra ni edita**
@@ -180,9 +181,18 @@ docs/
 - **Un remito agrupa varias OT** del mismo doctor. No es una por una.
 - **El precio del catálogo cambia con el tiempo.** El catálogo tiene historial con
   fecha de vigencia; la orden guarda el precio del día en que se cargó.
-- **Los descuentos y los plus** son una línea aparte, nunca otro precio del trabajo. Se
-  pueden poner en dos lugares: en la orden (en porcentaje o en monto fijo, mientras no esté
-  facturada) y en el remito al emitirlo. Los dos piden un motivo y salen impresos.
+- **Los descuentos y los plus** nunca cambian el precio del catálogo. Se pueden poner en
+  dos lugares:
+  - en cada trabajo de la orden, mientras no esté facturada: sobre el subtotal (catálogo ×
+    cantidad) se escribe el precio final, o se suma o resta un porcentaje o un monto fijo.
+    El ítem guarda las dos cosas: el subtotal de catálogo y lo que se cobra. El motivo es
+    **opcional**. Ya no hay ajuste sobre el total de la orden (las órdenes viejas que lo
+    tienen lo siguen mostrando).
+  - en el remito al emitirlo, sobre el total. Ese sí pide motivo y sale impreso.
+- **Los pagos se descuentan del saldo total del doctor**, no de un trabajo o un remito en
+  particular: no se elige a qué se imputa. Por dentro el servidor lo aplica de lo más viejo
+  a lo más nuevo (sirve para la antigüedad de la deuda), pero en pantalla no hay "pendiente"
+  por trabajo.
 - **Un remito emitido no se edita.** Para corregirlo se lo anula —queda el contra-asiento— y
   se emite uno nuevo con las mismas órdenes.
 - **"Ps" y "dto"** en la ficha del doctor son **piso y departamento** — parte del

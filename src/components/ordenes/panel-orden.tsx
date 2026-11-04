@@ -29,6 +29,7 @@ import { formatFechaCorta, formatFechaLarga, formatHora, formatOT } from "@/lib/
 import { formatARS } from "@/lib/money";
 import { ETIQUETA_ESTADO, ETIQUETA_SEXO, VARIANTE_ESTADO, type Sexo } from "@/lib/tipos";
 import {
+  describirAjusteItem,
   estaAtrasada,
   listarItemsDeOrden,
   type ItemDeOrden,
@@ -145,8 +146,15 @@ function DetalleOrden({ orden, onCambio }: { orden: OrdenConDoctor; onCambio: ()
                     <span className="font-mono">{item.trabajo?.codigo}</span> · piezas{" "}
                     {formatPieza(item.piezas)} · {formatARS(item.precio_unitario)} c/u
                   </span>
+                  {item.ajuste !== 0 && (
+                    <span className="text-xs text-ink-3">
+                      catálogo <span className="tabular-nums">{formatARS(item.subtotal)}</span> ·{" "}
+                      {describirAjusteItem(item)}
+                      {item.ajuste_motivo ? ` · ${item.ajuste_motivo}` : ""}
+                    </span>
+                  )}
                 </span>
-                <span className="tabular-nums">{formatARS(item.subtotal)}</span>
+                <span className="tabular-nums">{formatARS(item.importe)}</span>
               </li>
             ))}
           </ul>

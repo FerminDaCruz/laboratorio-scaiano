@@ -5,14 +5,19 @@ export type ItemNuevo = {
   trabajo_id: number;
   cantidad: number;
   piezas: string | null;
+  ajuste: AjusteItem | null;
 };
 
 /**
- * Descuento o plus de la orden. El precio de cada trabajo sale del catálogo y no se
- * toca: lo acordado va acá, sobre el total. El signo lo dice el valor: negativo
- * descuenta, positivo suma.
+ * Modificación del precio de un trabajo, sobre su subtotal de catálogo (precio × cantidad).
+ * El servidor la resuelve en pesos; el motivo es opcional.
+ *
+ *   precio      → el importe final que se cobra por el trabajo
+ *   porcentaje  → se suma (positivo) o se resta (negativo) ese porcentaje
+ *   monto       → se suma (positivo) o se resta (negativo) ese monto
  */
-export type AjusteOrden =
+export type AjusteItem =
+  | { tipo: "precio"; importe: Centavos; motivo: string }
   | { tipo: "porcentaje"; porcentaje: number; motivo: string }
   | { tipo: "monto"; monto: Centavos; motivo: string };
 
@@ -21,17 +26,20 @@ function aItemsJson(items: ItemNuevo[]) {
     trabajo_id: i.trabajo_id,
     cantidad: i.cantidad,
     piezas: i.piezas,
+    ...(i.ajuste === null
+      ? {}
+      : {
+          ajuste_tipo: i.ajuste.tipo,
+          // El monto viaja como texto: nunca pasa por un float.
+          ajuste_valor:
+            i.ajuste.tipo === "precio"
+              ? numericParaPostgres(i.ajuste.importe)
+              : i.ajuste.tipo === "monto"
+                ? numericParaPostgres(i.ajuste.monto)
+                : String(i.ajuste.porcentaje),
+          ajuste_motivo: i.ajuste.motivo.trim() === "" ? null : i.ajuste.motivo.trim(),
+        }),
   }));
-}
-
-function argumentosDeAjuste(ajuste: AjusteOrden | null) {
-  if (ajuste === null) return {};
-  return {
-    p_ajuste_tipo: ajuste.tipo,
-    p_ajuste_valor:
-      ajuste.tipo === "monto" ? numericParaPostgres(ajuste.monto) : ajuste.porcentaje,
-    p_ajuste_motivo: ajuste.motivo,
-  };
 }
 
 export type OrdenNueva = {
@@ -45,14 +53,13 @@ export type OrdenNueva = {
   indicaciones: string | null;
   fecha: string;
   entrega_at: string | null;
-  ajuste: AjusteOrden | null;
 };
 
 export type OrdenCreada = { id: number; numero: number; total: Centavos };
 
 /**
  * Un solo viaje al servidor. La función asigna el número correlativo y congela los
- * precios del catálogo, más el descuento o el plus que se haya acordado.
+ * precios del catálogo, con la modificación de precio de cada trabajo si la hay.
  */
 export async function crearOrden(orden: OrdenNueva): Promise<OrdenCreada> {
   const data = await rpcNueva<{ id: number; numero: number; total: number }>("crear_orden", {
@@ -66,7 +73,6 @@ export async function crearOrden(orden: OrdenNueva): Promise<OrdenCreada> {
     ...(orden.indicaciones ? { p_indicaciones: orden.indicaciones } : {}),
     p_fecha: orden.fecha,
     ...(orden.entrega_at ? { p_entrega_at: orden.entrega_at } : {}),
-    ...argumentosDeAjuste(orden.ajuste),
   });
 
   return {
@@ -91,7 +97,6 @@ export async function editarOrden(
     ...(orden.color ? { p_color: orden.color } : {}),
     ...(orden.indicaciones ? { p_indicaciones: orden.indicaciones } : {}),
     ...(orden.entrega_at ? { p_entrega_at: orden.entrega_at } : {}),
-    ...argumentosDeAjuste(orden.ajuste),
   });
 
   return {

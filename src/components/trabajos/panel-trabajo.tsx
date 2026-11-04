@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -31,12 +31,20 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { alTeclearEnFormulario } from "@/hooks/use-atajos";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatFechaCorta, formatFechaLarga } from "@/lib/format";
 import { centavosDesdeTexto, formatARS, textoDesdeCentavos, type Centavos } from "@/lib/money";
 import { mensajeDeErrorSupabase } from "@/lib/errores";
 import type { PrecioTrabajo, TrabajoConPrecio } from "@/lib/tipos";
-import { agregarPrecio, corregirPrecio, guardarTrabajo, listarPreciosDe } from "./datos";
+import {
+  agregarPrecio,
+  codigoDesdeTitulo,
+  codigoLibre,
+  corregirPrecio,
+  guardarTrabajo,
+  listarPreciosDe,
+} from "./datos";
 
 const esquemaTrabajo = z.object({
   codigo: z.string().trim().min(1, "Ingresá el código.").max(12, "El código es muy largo."),
@@ -334,6 +342,8 @@ function FormularioDeTrabajo({
     handleSubmit,
     control,
     setError,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormularioTrabajo>({
     resolver: zodResolver(esquemaTrabajo),
@@ -350,8 +360,38 @@ function FormularioDeTrabajo({
   const [precioInicial, setPrecioInicial] = useState("");
   const [errorPrecio, setErrorPrecio] = useState<string | undefined>();
 
+  // En el alta el código se arma solo a partir del título, y se busca uno que no esté
+  // tomado. Si la persona lo escribe a mano, se deja de proponer.
+  const esAlta = trabajo === null;
+  const codigoTocado = useRef(false);
+  const titulo = useDebounce(watch("titulo"), 300);
+
+  useEffect(() => {
+    if (!esAlta || codigoTocado.current) return;
+    let vigente = true;
+    const base = codigoDesdeTitulo(titulo);
+    codigoLibre(base)
+      .then((codigo) => {
+        if (vigente && !codigoTocado.current) {
+          setValue("codigo", codigo, { shouldValidate: codigo !== "" });
+        }
+      })
+      // Si no se pudo consultar, queda la base: la restricción única avisa al guardar.
+      .catch(() => {
+        if (vigente && !codigoTocado.current) setValue("codigo", base);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [esAlta, titulo, setValue]);
+
+  const registroCodigo = register("codigo", {
+    onChange: () => {
+      codigoTocado.current = true;
+    },
+  });
+
   async function guardar(datos: FormularioTrabajo) {
-    const esAlta = trabajo === null;
     let centavos: number | null = null;
 
     if (esAlta && precioInicial.trim() !== "") {
@@ -393,23 +433,31 @@ function FormularioDeTrabajo({
       onSubmit={handleSubmit(guardar)}
       onKeyDown={alTeclearEnFormulario}
     >
+      <Campo id="titulo" etiqueta="Título" error={errors.titulo?.message} requerido>
+        <Input
+          id="titulo"
+          autoFocus
+          aria-invalid={errors.titulo ? true : undefined}
+          {...register("titulo")}
+        />
+      </Campo>
       <Campo
         id="codigo"
         etiqueta="Código"
         error={errors.codigo?.message}
-        ayuda="Es lo que se tipea al cargar una orden."
+        ayuda={
+          esAlta
+            ? "Se arma solo a partir del título, con uno que no esté usado. Se puede cambiar."
+            : "Sirve para buscar el trabajo al cargar una orden."
+        }
         requerido
       >
         <Input
           id="codigo"
-          autoFocus
           className="font-mono uppercase"
           aria-invalid={errors.codigo ? true : undefined}
-          {...register("codigo")}
+          {...registroCodigo}
         />
-      </Campo>
-      <Campo id="titulo" etiqueta="Título" error={errors.titulo?.message} requerido>
-        <Input id="titulo" aria-invalid={errors.titulo ? true : undefined} {...register("titulo")} />
       </Campo>
       <Campo id="descripcion" etiqueta="Descripción">
         <Textarea id="descripcion" {...register("descripcion")} />

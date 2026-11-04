@@ -268,9 +268,12 @@ Lo que Damián hoy no tiene y le va a hacer sentir que valió la pena.
 Lo que pidió el laboratorio después de probar el sistema. El libro mayor sigue sin editarse:
 corregir un remito emitido es anularlo y rehacerlo.
 
-- Descuento o plus sobre el total de la orden, en porcentaje o en monto fijo, con motivo
-- `editar_orden`: cambiar trabajos, cantidades, piezas, el ajuste y los datos mientras la
-  orden no esté facturada
+- Modificar el precio de cada trabajo de la orden sobre su subtotal: precio final, o un
+  porcentaje o monto fijo de más o de menos, con motivo opcional (antes era un ajuste sobre
+  el total; se cambió el 03/11/2026)
+- `editar_orden`: cambiar trabajos, cantidades, piezas, la modificación de precio y los
+  datos mientras la orden no esté facturada
+- Pagos contra el saldo total del doctor, sin elegir a qué trabajo o remito se imputan
 - `anular_orden`: solo un administrador, y solo si la orden no entró en un remito
 - Descuento o recargo al emitir el remito, con motivo, que sale impreso en el ticket
 - **Facturar** desde la orden, además de la bandeja de escaneo
@@ -280,7 +283,7 @@ corregir un remito emitido es anularlo y rehacerlo.
 **Archivos:** `supabase/migrations/*_ajustes_y_correcciones.sql` · `src/app/ordenes/editar/**` ·
 `src/components/ordenes/**` · `src/app/remitos/nuevo/**` · `src/components/remitos/**`
 
-**Terminado cuando:** se puede cargar una orden con un descuento o un plus, editarla,
+**Terminado cuando:** se puede cargar una orden con un trabajo a otro precio, editarla,
 anularla siendo admin, emitir un remito con descuento y corregirlo.
 
 ---

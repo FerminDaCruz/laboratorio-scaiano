@@ -8,18 +8,16 @@ import { listarDoctoresParaCombo, listarObrasSociales } from "@/components/docto
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { buscarOrdenPorNumero, listarItemsDeOrden } from "@/components/ordenes/consultas";
 import { FormularioOrden, type OrdenEditable } from "@/components/ordenes/formulario-orden";
-import { listarTrabajos } from "@/components/trabajos/datos";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatOT } from "@/lib/format";
-import type { Doctor, ObraSocial, TrabajoConPrecio } from "@/lib/tipos";
+import type { Doctor, ObraSocial } from "@/lib/tipos";
 
 type Datos = {
   orden: OrdenEditable | null;
   motivo: "remitida" | "anulada" | null;
   doctores: Doctor[];
-  trabajos: TrabajoConPrecio[];
   obrasSociales: ObraSocial[];
 };
 
@@ -37,23 +35,22 @@ function EditarOrden() {
 
   const { consulta, recargar } = useConsulta<Datos>(
     async () => {
-      const [doctores, trabajos, obrasSociales] = await Promise.all([
+      const [doctores, obrasSociales] = await Promise.all([
         listarDoctoresParaCombo(),
-        listarTrabajos(true),
         listarObrasSociales(),
       ]);
 
       if (!Number.isInteger(numero) || numero <= 0) {
-        return { orden: null, motivo: null, doctores, trabajos, obrasSociales };
+        return { orden: null, motivo: null, doctores, obrasSociales };
       }
 
       const orden = await buscarOrdenPorNumero(numero);
-      if (!orden) return { orden: null, motivo: null, doctores, trabajos, obrasSociales };
+      if (!orden) return { orden: null, motivo: null, doctores, obrasSociales };
       if (orden.remito_id !== null || orden.estado === "entregada") {
-        return { orden: null, motivo: "remitida", doctores, trabajos, obrasSociales };
+        return { orden: null, motivo: "remitida", doctores, obrasSociales };
       }
       if (orden.estado === "anulada") {
-        return { orden: null, motivo: "anulada", doctores, trabajos, obrasSociales };
+        return { orden: null, motivo: "anulada", doctores, obrasSociales };
       }
 
       const items = await listarItemsDeOrden(orden.id);
@@ -72,16 +69,19 @@ function EditarOrden() {
           indicaciones: orden.indicaciones,
           items: items.map((i) => ({
             trabajo_id: i.trabajo_id,
+            titulo: i.trabajo?.titulo ?? "—",
+            precio_unitario: i.precio_unitario,
             cantidad: i.cantidad,
             piezas: i.piezas,
+            ajuste_tipo: i.ajuste_tipo,
+            ajuste_valor: i.ajuste_valor,
+            ajuste_motivo: i.ajuste_motivo,
           })),
           ajuste: orden.ajuste,
-          ajuste_pct: orden.ajuste_pct,
           ajuste_motivo: orden.ajuste_motivo,
         },
         motivo: null,
         doctores,
-        trabajos,
         obrasSociales,
       };
     },
@@ -116,7 +116,6 @@ function EditarOrden() {
           <FormularioOrden
             orden={consulta.datos.orden}
             doctores={consulta.datos.doctores}
-            trabajos={consulta.datos.trabajos}
             obrasSociales={consulta.datos.obrasSociales}
             onGuardada={() => router.push("/ordenes")}
             onCancelar={() => router.push("/ordenes")}

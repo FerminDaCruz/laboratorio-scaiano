@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.17"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -278,8 +283,13 @@ export type Database = {
       }
       orden_items: {
         Row: {
+          ajuste: number
+          ajuste_motivo: string | null
+          ajuste_tipo: string | null
+          ajuste_valor: number | null
           cantidad: number
           id: number
+          importe: number | null
           orden_id: number
           piezas: string | null
           posicion: number
@@ -288,8 +298,13 @@ export type Database = {
           trabajo_id: number
         }
         Insert: {
+          ajuste?: number
+          ajuste_motivo?: string | null
+          ajuste_tipo?: string | null
+          ajuste_valor?: number | null
           cantidad?: number
           id?: never
+          importe?: number | null
           orden_id: number
           piezas?: string | null
           posicion?: number
@@ -298,8 +313,13 @@ export type Database = {
           trabajo_id: number
         }
         Update: {
+          ajuste?: number
+          ajuste_motivo?: string | null
+          ajuste_tipo?: string | null
+          ajuste_valor?: number | null
           cantidad?: number
           id?: never
+          importe?: number | null
           orden_id?: number
           piezas?: string | null
           posicion?: number
@@ -327,6 +347,9 @@ export type Database = {
       ordenes: {
         Row: {
           actualizado_en: string
+          ajuste: number
+          ajuste_motivo: string | null
+          ajuste_pct: number | null
           color: string | null
           creado_en: string
           creado_por: string | null
@@ -337,6 +360,7 @@ export type Database = {
           fecha: string
           id: number
           indicaciones: string | null
+          motivo_anulacion: string | null
           numero: number
           obra_social_id: number | null
           paciente: string
@@ -346,6 +370,9 @@ export type Database = {
         }
         Insert: {
           actualizado_en?: string
+          ajuste?: number
+          ajuste_motivo?: string | null
+          ajuste_pct?: number | null
           color?: string | null
           creado_en?: string
           creado_por?: string | null
@@ -356,6 +383,7 @@ export type Database = {
           fecha?: string
           id?: never
           indicaciones?: string | null
+          motivo_anulacion?: string | null
           numero: number
           obra_social_id?: number | null
           paciente: string
@@ -365,6 +393,9 @@ export type Database = {
         }
         Update: {
           actualizado_en?: string
+          ajuste?: number
+          ajuste_motivo?: string | null
+          ajuste_pct?: number | null
           color?: string | null
           creado_en?: string
           creado_por?: string | null
@@ -375,6 +406,7 @@ export type Database = {
           fecha?: string
           id?: never
           indicaciones?: string | null
+          motivo_anulacion?: string | null
           numero?: number
           obra_social_id?: number | null
           paciente?: string
@@ -581,6 +613,8 @@ export type Database = {
       }
       remitos: {
         Row: {
+          ajuste: number
+          ajuste_motivo: string | null
           anulado_en: string | null
           anulado_por: string | null
           creado_en: string
@@ -592,6 +626,8 @@ export type Database = {
           total: number
         }
         Insert: {
+          ajuste?: number
+          ajuste_motivo?: string | null
           anulado_en?: string | null
           anulado_por?: string | null
           creado_en?: string
@@ -603,6 +639,8 @@ export type Database = {
           total: number
         }
         Update: {
+          ajuste?: number
+          ajuste_motivo?: string | null
           anulado_en?: string | null
           anulado_por?: string | null
           creado_en?: string
@@ -809,9 +847,21 @@ export type Database = {
       }
     }
     Functions: {
+      ajuste_de_item: {
+        Args: { p_base: number; p_tipo: string; p_valor: number }
+        Returns: number
+      }
+      anular_orden: {
+        Args: { p_motivo?: string; p_orden_id: number }
+        Returns: Json
+      }
       anular_remito: {
         Args: { p_motivo?: string; p_remito_id: number }
         Returns: Json
+      }
+      cargar_items_de_orden: {
+        Args: { p_fecha: string; p_items: Json; p_orden_id: number }
+        Returns: number
       }
       cerrar_periodo: { Args: { p_anio: number; p_mes: number }; Returns: Json }
       crear_orden: {
@@ -829,8 +879,28 @@ export type Database = {
         }
         Returns: Json
       }
+      editar_orden: {
+        Args: {
+          p_color?: string
+          p_edad?: number
+          p_entrega_at?: string
+          p_indicaciones?: string
+          p_items: Json
+          p_obra_social_id?: number
+          p_orden_id: number
+          p_paciente: string
+          p_sexo?: string
+        }
+        Returns: Json
+      }
       emitir_remito: {
-        Args: { p_doctor_id: number; p_fecha?: string; p_orden_ids: number[] }
+        Args: {
+          p_ajuste?: number
+          p_ajuste_motivo?: string
+          p_doctor_id: number
+          p_fecha?: string
+          p_orden_ids: number[]
+        }
         Returns: Json
       }
       es_admin: { Args: never; Returns: boolean }
@@ -985,4 +1055,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

@@ -63,7 +63,7 @@ type LineaCruda = {
     orden_items: {
       cantidad: number;
       precio_unitario: number;
-      subtotal: number;
+      importe: number;
       trabajos: { titulo: string } | null;
     }[];
   } | null;
@@ -106,7 +106,7 @@ export async function liquidacionesDelMes(
   const { data: lineas, error: errorLineas } = await supabase
     .from("remito_lineas")
     .select(
-      "remito_id, ordenes(numero, paciente, obras_sociales(nombre), orden_items(cantidad, precio_unitario, subtotal, trabajos(titulo)))",
+      "remito_id, ordenes(numero, paciente, obras_sociales(nombre), orden_items(cantidad, precio_unitario, importe, trabajos(titulo)))",
     )
     .in("remito_id", [...remitosPorId.keys()]);
   if (errorLineas) throw errorLineas;
@@ -127,7 +127,8 @@ export async function liquidacionesDelMes(
       obraSocial: linea.ordenes?.obras_sociales?.nombre ?? "—",
       cantidad: item.cantidad,
       precio: centavosDesdeNumeric(item.precio_unitario),
-      total: centavosDesdeNumeric(item.subtotal),
+      // Lo que se cobró, con la modificación de precio del trabajo si la hubo.
+      total: centavosDesdeNumeric(item.importe),
     }));
 
     filasPorDoctor.set(remito.doctor_id, [...(filasPorDoctor.get(remito.doctor_id) ?? []), ...filas]);

@@ -82,10 +82,18 @@ export async function listarItemsDeOrden(ordenId: number): Promise<ItemDeOrden[]
       subtotal: number;
       trabajos: { codigo: string; titulo: string } | null;
     };
+    const crudo = fila as Record<string, unknown>;
+    const subtotal = centavosDesdeNumeric(fila.subtotal as number);
+    const ajuste = centavosDesdeNumeric((crudo.ajuste as number) ?? 0);
     return {
       ...(resto as unknown as OrdenItem),
       precio_unitario: centavosDesdeNumeric(fila.precio_unitario as number),
-      subtotal: centavosDesdeNumeric(fila.subtotal as number),
+      subtotal,
+      ajuste_tipo: (crudo.ajuste_tipo as OrdenItem["ajuste_tipo"]) ?? null,
+      ajuste_valor: (crudo.ajuste_valor as number) ?? null,
+      ajuste,
+      ajuste_motivo: (crudo.ajuste_motivo as string) ?? null,
+      importe: subtotal + ajuste,
       trabajo: trabajos,
     };
   });
@@ -124,4 +132,18 @@ export function estaAtrasada(orden: Orden): boolean {
   if (!orden.entrega_at) return false;
   if (orden.estado === "entregada" || orden.estado === "anulada") return false;
   return new Date(orden.entrega_at).getTime() < Date.now();
+}
+
+/**
+ * Cómo se nombra la modificación de precio de un ítem en pantalla y en los papeles:
+ * "precio acordado", "descuento 10%", "plus".
+ */
+export function describirAjusteItem(item: Pick<OrdenItem, "ajuste" | "ajuste_tipo" | "ajuste_valor">): string {
+  if (item.ajuste === 0 || item.ajuste_tipo === null) return "";
+  if (item.ajuste_tipo === "precio") return "precio acordado";
+  const nombre = item.ajuste < 0 ? "descuento" : "plus";
+  if (item.ajuste_tipo === "porcentaje" && item.ajuste_valor !== null) {
+    return `${nombre} ${String(Math.abs(item.ajuste_valor)).replace(".", ",")}%`;
+  }
+  return nombre;
 }

@@ -1,3 +1,4 @@
+import { rangoDelMes } from "@/components/liquidaciones/consultas";
 import { centavosDesdeNumeric, numericParaPostgres, type Centavos } from "@/lib/money";
 import { getSupabase } from "@/lib/supabase";
 import type { Doctor, MedioPago, MovimientoCC, TipoMovimiento } from "@/lib/tipos";
@@ -124,84 +125,91 @@ export async function movimientosDeDoctor(doctorId: number): Promise<MovimientoC
   });
 }
 
-export type DeudaPendiente = {
-  id: number;
+export type TrabajoDelMes = {
+  /** Una fila por orden entregada: remito + OT. */
+  id: string;
   fecha: string;
-  pendiente: Centavos;
+  remitoNumero: number;
+  ordenNumero: number;
+  paciente: string;
+  trabajos: string[];
+  /** El importe completo de la orden, no lo que queda por pagar de ella. */
   importe: Centavos;
-  remitoId: number | null;
-  remitoNumero: number | null;
-  pacientes: string[];
 };
 
-export async function deudasPendientes(doctorId: number): Promise<DeudaPendiente[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("v_deudas_pendientes")
-    .select("*")
+type RemitoDelMesCrudo = {
+  numero: number;
+  fecha: string;
+  remito_lineas: {
+    importe: number;
+    ordenes: {
+      numero: number;
+      paciente: string;
+      orden_items: { posicion: number; trabajos: { titulo: string } | null }[];
+    } | null;
+  }[];
+};
+
+/**
+ * Las órdenes que se le entregaron al doctor en el mes en curso, con su importe completo.
+ * Los pagos se descuentan del saldo total, no de cada trabajo: por eso no hay "pendiente"
+ * por orden. Los remitos anulados no entran.
+ */
+export async function trabajosDelMes(doctorId: number, hoy = new Date()): Promise<TrabajoDelMes[]> {
+  const { desde, hasta } = rangoDelMes(hoy.getFullYear(), hoy.getMonth() + 1);
+  const { data, error } = await getSupabase()
+    .from("remitos")
+    .select(
+      "numero, fecha, remito_lineas(importe, ordenes(numero, paciente, orden_items(posicion, trabajos(titulo))))",
+    )
     .eq("doctor_id", doctorId)
-    .order("fecha");
+    .gte("fecha", desde)
+    .lt("fecha", hasta)
+    .is("anulado_en", null)
+    .order("fecha")
+    .order("numero");
   if (error) throw error;
 
-  const deudas = (data ?? []).map((d) => ({
-    id: d.id as number,
-    fecha: d.fecha as string,
-    pendiente: centavosDesdeNumeric(d.pendiente as number),
-    importe: centavosDesdeNumeric(d.importe as number),
-    remitoId: (d.remito_id as number) ?? null,
-    remitoNumero: null as number | null,
-    pacientes: [] as string[],
-  }));
-
-  const remitoIds = deudas.map((d) => d.remitoId).filter((id): id is number => id !== null);
-  if (remitoIds.length === 0) return deudas;
-
-  const [remitos, lineas] = await Promise.all([
-    supabase.from("remitos").select("id, numero").in("id", remitoIds),
-    supabase.from("remito_lineas").select("remito_id, ordenes(paciente)").in("remito_id", remitoIds),
-  ]);
-  if (remitos.error) throw remitos.error;
-  if (lineas.error) throw lineas.error;
-
-  const numeros = new Map((remitos.data ?? []).map((r) => [r.id as number, r.numero as number]));
-  const pacientes = new Map<number, string[]>();
-  for (const linea of lineas.data ?? []) {
-    const remitoId = linea.remito_id as number;
-    const paciente = (linea as { ordenes: { paciente: string } | null }).ordenes?.paciente;
-    if (!paciente) continue;
-    pacientes.set(remitoId, [...(pacientes.get(remitoId) ?? []), paciente]);
-  }
-
-  return deudas.map((d) => ({
-    ...d,
-    remitoNumero: d.remitoId ? (numeros.get(d.remitoId) ?? null) : null,
-    pacientes: d.remitoId ? (pacientes.get(d.remitoId) ?? []) : [],
-  }));
+  return ((data ?? []) as unknown as RemitoDelMesCrudo[]).flatMap((remito) =>
+    remito.remito_lineas
+      .filter((linea) => linea.ordenes !== null)
+      .sort((a, b) => (a.ordenes?.numero ?? 0) - (b.ordenes?.numero ?? 0))
+      .map((linea) => ({
+        id: `${remito.numero}-${linea.ordenes?.numero}`,
+        fecha: remito.fecha,
+        remitoNumero: remito.numero,
+        ordenNumero: linea.ordenes?.numero ?? 0,
+        paciente: linea.ordenes?.paciente ?? "—",
+        trabajos: [...(linea.ordenes?.orden_items ?? [])]
+          .sort((a, b) => a.posicion - b.posicion)
+          .map((item) => item.trabajos?.titulo ?? "—"),
+        importe: centavosDesdeNumeric(linea.importe),
+      })),
+  );
 }
 
+/**
+ * Registra un pago. Se descuenta del saldo total del doctor: el servidor lo aplica
+ * solo, de lo más viejo a lo más nuevo, y lo que sobre queda a favor.
+ */
 export async function registrarPago(datos: {
   doctorId: number;
   importe: Centavos;
   fecha: string;
   medio: MedioPago;
   referencia: string | null;
-  deudaIds: number[] | null;
-}): Promise<{ imputado: Centavos; aFavor: Centavos }> {
+}): Promise<{ aFavor: Centavos }> {
   const { data, error } = await getSupabase().rpc("registrar_pago", {
     p_doctor_id: datos.doctorId,
     p_importe: numericParaPostgres(datos.importe),
     p_fecha: datos.fecha,
     p_medio: datos.medio,
     ...(datos.referencia ? { p_referencia: datos.referencia } : {}),
-    ...(datos.deudaIds && datos.deudaIds.length > 0 ? { p_deuda_ids: datos.deudaIds } : {}),
   });
   if (error) throw error;
 
-  const r = data as unknown as { imputado: number; a_favor: number };
-  return {
-    imputado: centavosDesdeNumeric(r.imputado),
-    aFavor: centavosDesdeNumeric(r.a_favor),
-  };
+  const r = data as unknown as { a_favor: number };
+  return { aFavor: centavosDesdeNumeric(r.a_favor) };
 }
 
 export type PagoListado = MovimientoCC & { doctor: { nombre: string; ficha: number } | null };

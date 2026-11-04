@@ -5,15 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import {
-  deudasPendientes,
   ETIQUETA_ESTADO_CUENTA,
   listarCuentas,
   movimientosDeDoctor,
+  trabajosDelMes,
   VARIANTE_ESTADO_CUENTA,
   type CuentaDoctor,
-  type DeudaPendiente,
   type MovimientoConImputado,
+  type TrabajoDelMes,
 } from "@/components/cc/consultas";
+import { TablaTrabajosDelMes } from "@/components/cc/tabla-trabajos-del-mes";
 import { ErrorConsulta, PaginaListado } from "@/components/listado/pagina-listado";
 import { TablaCargando, TablaNavegable, type Columna } from "@/components/listado/tabla-navegable";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/table";
 import { useAtajoBuscador } from "@/hooks/use-atajos";
 import { useConsulta } from "@/hooks/use-consulta";
-import { formatFechaCorta, formatRemito } from "@/lib/format";
+import { formatFechaCorta } from "@/lib/format";
 import { formatARS } from "@/lib/money";
 import { normalizar } from "@/lib/texto";
 import { ETIQUETA_TIPO_MOVIMIENTO } from "@/lib/tipos";
@@ -158,16 +159,16 @@ function ListadoCuentas() {
 function DetalleCuenta({ doctorId }: { doctorId: number }) {
   const { consulta, recargar } = useConsulta<{
     movimientos: MovimientoConImputado[];
-    deudas: DeudaPendiente[];
+    trabajos: TrabajoDelMes[];
     cuentas: CuentaDoctor[];
   }>(
     async () => {
-      const [movimientos, deudas, cuentas] = await Promise.all([
+      const [movimientos, trabajos, cuentas] = await Promise.all([
         movimientosDeDoctor(doctorId),
-        deudasPendientes(doctorId),
+        trabajosDelMes(doctorId),
         listarCuentas(),
       ]);
-      return { movimientos, deudas, cuentas };
+      return { movimientos, trabajos, cuentas };
     },
     [doctorId],
     "No se pudo cargar la cuenta. Revisá la conexión y probá de nuevo.",
@@ -209,41 +210,10 @@ function DetalleCuenta({ doctorId }: { doctorId: number }) {
       )}
 
       <section className="flex flex-col gap-3">
-        <h3 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">Impago</h3>
-        <div className="overflow-hidden rounded-md border border-border bg-surface">
-          {consulta.datos.deudas.length === 0 ? (
-            <p className="p-4 text-ink-3">No hay deudas pendientes.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Fecha</TableHead>
-                  <TableHead className="w-28">Remito</TableHead>
-                  <TableHead>Pacientes</TableHead>
-                  <TableHead className="text-right">Importe</TableHead>
-                  <TableHead className="text-right">Pendiente</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {consulta.datos.deudas.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell>{formatFechaCorta(d.fecha)}</TableCell>
-                    <TableCell className="font-mono">
-                      {d.remitoNumero ? formatRemito(d.remitoNumero) : "—"}
-                    </TableCell>
-                    <TableCell>{d.pacientes.join(" · ") || "—"}</TableCell>
-                    <TableCell className="text-right text-ink-2 tabular-nums">
-                      {formatARS(d.importe)}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {formatARS(d.pendiente)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+        <h3 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+          Trabajos del mes
+        </h3>
+        <TablaTrabajosDelMes trabajos={consulta.datos.trabajos} saldo={cuenta?.saldo ?? 0} />
       </section>
 
       <Separator />

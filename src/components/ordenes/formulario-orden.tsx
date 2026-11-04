@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -20,13 +20,31 @@ import { formatPieza, parsearPiezas, piezasSeleccionadas } from "@/lib/fdi";
 import { formatOT } from "@/lib/format";
 import {
   aplicarPorcentaje,
+  centavosDesdeNumeric,
   centavosDesdeTexto,
   formatARS,
+  formatearEntradaMonto,
   textoDesdeCentavos,
   type Centavos,
 } from "@/lib/money";
-import type { Doctor, ObraSocial, TrabajoConPrecio } from "@/lib/tipos";
-import { armarEntrega, crearOrden, editarOrden, type AjusteOrden } from "./datos";
+import type { Doctor, ObraSocial, TipoAjusteItem } from "@/lib/tipos";
+import { ComboboxTrabajo } from "./combobox-trabajo";
+import { armarEntrega, crearOrden, editarOrden, type AjusteItem } from "./datos";
+
+/**
+ * Cómo se modifica el precio de un trabajo, sobre su subtotal de catálogo. "" es sin
+ * modificar. El signo del porcentaje y del monto sale de la opción, no de lo que se tipea.
+ */
+const MODIFICACIONES = [
+  { valor: "", etiqueta: "Sin modificar" },
+  { valor: "precio", etiqueta: "Precio final" },
+  { valor: "descuento_pct", etiqueta: "Descuento en %" },
+  { valor: "plus_pct", etiqueta: "Plus en %" },
+  { valor: "descuento_monto", etiqueta: "Descuento en $" },
+  { valor: "plus_monto", etiqueta: "Plus en $" },
+];
+
+const esPorcentaje = (modo: string) => modo === "descuento_pct" || modo === "plus_pct";
 
 const esquema = z.object({
   doctor_id: z.string().min(1, "Elegí el doctor."),
@@ -47,10 +65,19 @@ const esquema = z.object({
       z
         .object({
           trabajo_id: z.string().min(1, "Elegí el trabajo."),
+          /** Lo que muestra el combo, para no volver a pedir el trabajo a la base. */
+          trabajo_titulo: z.string(),
+          /** Precio unitario de catálogo, en centavos. */
+          precio: z.number().nullable(),
           cantidad: z.string(),
           piezas: z.string().nullable(),
           /** "cantidad" | "piezas" | "arcada": de dónde sale la cantidad. */
           modo_piezas: z.string(),
+          /** Ver MODIFICACIONES. */
+          ajuste_modo: z.string(),
+          ajuste_valor: z.string(),
+          /** Opcional. */
+          ajuste_motivo: z.string(),
         })
         .superRefine((item, ctx) => {
           if (item.modo_piezas === "piezas") {
@@ -61,54 +88,28 @@ const esquema = z.object({
                 message: "Elegí las piezas en el diagrama.",
               });
             }
-            return;
+          } else {
+            if (item.modo_piezas === "arcada" && parsearPiezas(item.piezas).modo !== "arcada") {
+              ctx.addIssue({ code: "custom", path: ["piezas"], message: "Elegí la arcada." });
+            }
+            if (!/^\d+$/.test(item.cantidad) || Number(item.cantidad) <= 0) {
+              ctx.addIssue({
+                code: "custom",
+                path: ["cantidad"],
+                message: "La cantidad tiene que ser mayor que cero.",
+              });
+            }
           }
 
-          if (item.modo_piezas === "arcada" && parsearPiezas(item.piezas).modo !== "arcada") {
-            ctx.addIssue({ code: "custom", path: ["piezas"], message: "Elegí la arcada." });
-          }
-          if (!/^\d+$/.test(item.cantidad) || Number(item.cantidad) <= 0) {
-            ctx.addIssue({
-              code: "custom",
-              path: ["cantidad"],
-              message: "La cantidad tiene que ser mayor que cero.",
-            });
-          }
+          const error = errorDeModificacion(item);
+          if (error) ctx.addIssue({ code: "custom", path: ["ajuste_valor"], message: error });
         }),
     )
     .min(1, "La orden necesita al menos un trabajo."),
-  // Descuento o plus de la orden. El precio del trabajo no se toca.
-  ajuste_tipo: z.string(),
-  ajuste_modo: z.string(),
-  ajuste_valor: z.string(),
-  ajuste_motivo: z.string(),
-}).superRefine((valores, ctx) => {
-  if (valores.ajuste_tipo === "") return;
-
-  if (valores.ajuste_modo === "porcentaje") {
-    const pct = porcentajeDesdeTexto(valores.ajuste_valor);
-    if (pct === null || pct <= 0 || pct > 100) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["ajuste_valor"],
-        message: "Poné un porcentaje mayor que cero y hasta 100.",
-      });
-    }
-  } else {
-    const monto = centavosDesdeTexto(valores.ajuste_valor);
-    if (monto === null || monto <= 0) {
-      ctx.addIssue({ code: "custom", path: ["ajuste_valor"], message: "Poné el importe." });
-    }
-  }
-
-  if (valores.ajuste_motivo.trim() === "") {
-    ctx.addIssue({
-      code: "custom",
-      path: ["ajuste_motivo"],
-      message: "Un descuento o un plus necesita un motivo.",
-    });
-  }
 });
+
+type Formulario = z.infer<typeof esquema>;
+type ItemFormulario = Formulario["items"][number];
 
 /** "12,5", "12.5" o "12,5%" → 12.5. Null si no es un porcentaje. */
 function porcentajeDesdeTexto(texto: string): number | null {
@@ -117,25 +118,124 @@ function porcentajeDesdeTexto(texto: string): number | null {
   return Number(limpio);
 }
 
-/** Lo que suma o resta el ajuste sobre la suma de los trabajos. */
-function calcularAjuste(base: Centavos, tipo: string, modo: string, valor: string): Centavos {
-  if (tipo === "") return 0;
-  const signo = tipo === "descuento" ? -1 : 1;
+/**
+ * La cantidad que se cobra. Si el trabajo se carga por piezas, la cantidad es el
+ * número de piezas elegidas y no se escribe a mano.
+ */
+function cantidadDelItem(
+  item: { cantidad: string; piezas: string | null; modo_piezas: string } | undefined,
+): number | null {
+  if (!item) return null;
 
-  if (modo === "porcentaje") {
-    const pct = porcentajeDesdeTexto(valor);
-    return pct === null ? 0 : signo * (aplicarPorcentaje(base, pct) - base);
+  if (item.modo_piezas === "piezas") {
+    const elegidas = piezasSeleccionadas(parsearPiezas(item.piezas)).length;
+    return elegidas === 0 ? null : elegidas;
   }
 
-  const monto = centavosDesdeTexto(valor);
-  return monto === null ? 0 : signo * monto;
+  return /^\d+$/.test(item.cantidad) && Number(item.cantidad) > 0 ? Number(item.cantidad) : null;
 }
 
-type Formulario = z.infer<typeof esquema>;
+/** Precio de catálogo × cantidad, sin modificar. */
+function subtotalDelItem(item: ItemFormulario | undefined): Centavos | null {
+  if (!item || item.precio === null) return null;
+  const cantidad = cantidadDelItem(item);
+  return cantidad === null ? null : item.precio * cantidad;
+}
+
+/** Lo que se cobra por el ítem: el subtotal de catálogo con su modificación. */
+function importeDelItem(item: ItemFormulario | undefined): Centavos | null {
+  const base = subtotalDelItem(item);
+  if (!item || base === null || item.ajuste_modo === "") return base;
+
+  const modo = item.ajuste_modo;
+  if (modo === "precio") return centavosDesdeTexto(item.ajuste_valor) ?? base;
+
+  if (esPorcentaje(modo)) {
+    const pct = porcentajeDesdeTexto(item.ajuste_valor);
+    if (pct === null) return base;
+    return aplicarPorcentaje(base, modo === "descuento_pct" ? -pct : pct);
+  }
+
+  const monto = centavosDesdeTexto(item.ajuste_valor);
+  if (monto === null) return base;
+  return modo === "descuento_monto" ? base - monto : base + monto;
+}
+
+/** Lo que está mal en la modificación de precio de un ítem, o null. */
+function errorDeModificacion(item: ItemFormulario): string | null {
+  const modo = item.ajuste_modo;
+  if (modo === "") return null;
+
+  if (esPorcentaje(modo)) {
+    const pct = porcentajeDesdeTexto(item.ajuste_valor);
+    if (pct === null || pct <= 0) return "Poné un porcentaje mayor que cero.";
+    if (modo === "descuento_pct" && pct > 100) return "Un descuento no puede pasar del 100 %.";
+    return null;
+  }
+
+  const monto = centavosDesdeTexto(item.ajuste_valor);
+  if (modo === "precio") {
+    return monto === null || monto < 0 ? "Poné el precio que se cobra." : null;
+  }
+  if (monto === null || monto <= 0) return "Poné el importe.";
+
+  const base = subtotalDelItem(item);
+  if (modo === "descuento_monto" && base !== null && monto > base) {
+    return "El descuento no puede ser mayor que el precio del trabajo.";
+  }
+  return null;
+}
+
+/** La modificación como la espera el servidor, o null si se cobra el precio de catálogo. */
+function ajusteParaGuardar(item: ItemFormulario): AjusteItem | null {
+  const modo = item.ajuste_modo;
+  const motivo = item.ajuste_motivo.trim();
+  if (modo === "") return null;
+
+  if (modo === "precio") {
+    return { tipo: "precio", importe: centavosDesdeTexto(item.ajuste_valor) ?? 0, motivo };
+  }
+  if (esPorcentaje(modo)) {
+    const pct = porcentajeDesdeTexto(item.ajuste_valor) ?? 0;
+    return { tipo: "porcentaje", porcentaje: modo === "descuento_pct" ? -pct : pct, motivo };
+  }
+  const monto = centavosDesdeTexto(item.ajuste_valor) ?? 0;
+  return { tipo: "monto", monto: modo === "descuento_monto" ? -monto : monto, motivo };
+}
+
+/** De la modificación guardada en la base a lo que muestra el formulario. */
+function modificacionGuardada(
+  tipo: TipoAjusteItem | null,
+  valor: number | null,
+): { ajuste_modo: string; ajuste_valor: string } {
+  if (tipo === null || valor === null) return { ajuste_modo: "", ajuste_valor: "" };
+
+  const negativo = valor < 0;
+  if (tipo === "porcentaje") {
+    return {
+      ajuste_modo: negativo ? "descuento_pct" : "plus_pct",
+      ajuste_valor: String(Math.abs(valor)).replace(".", ","),
+    };
+  }
+
+  const texto = formatearEntradaMonto(textoDesdeCentavos(Math.abs(centavosDesdeNumeric(valor))));
+  if (tipo === "precio") return { ajuste_modo: "precio", ajuste_valor: texto };
+  return { ajuste_modo: negativo ? "descuento_monto" : "plus_monto", ajuste_valor: texto };
+}
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
-const ITEM_VACIO = { trabajo_id: "", cantidad: "1", piezas: null, modo_piezas: "cantidad" };
+const ITEM_VACIO: ItemFormulario = {
+  trabajo_id: "",
+  trabajo_titulo: "",
+  precio: null,
+  cantidad: "1",
+  piezas: null,
+  modo_piezas: "cantidad",
+  ajuste_modo: "",
+  ajuste_valor: "",
+  ajuste_motivo: "",
+};
 
 /** Una orden que se está editando. Los precios ya están congelados en el servidor. */
 export type OrdenEditable = {
@@ -150,9 +250,19 @@ export type OrdenEditable = {
   fecha: string;
   entrega_at: string | null;
   indicaciones: string | null;
-  items: { trabajo_id: number; cantidad: number; piezas: string | null }[];
+  items: {
+    trabajo_id: number;
+    titulo: string;
+    /** El precio unitario congelado en la orden. */
+    precio_unitario: Centavos;
+    cantidad: number;
+    piezas: string | null;
+    ajuste_tipo: TipoAjusteItem | null;
+    ajuste_valor: number | null;
+    ajuste_motivo: string | null;
+  }[];
+  /** Ajuste sobre el total, de antes de que el precio se modificara por trabajo. */
   ajuste: Centavos;
-  ajuste_pct: number | null;
   ajuste_motivo: string | null;
 };
 
@@ -180,19 +290,14 @@ function valoresDeOrden(orden: OrdenEditable): Formulario {
     indicaciones: orden.indicaciones ?? "",
     items: orden.items.map((i) => ({
       trabajo_id: String(i.trabajo_id),
+      trabajo_titulo: i.titulo,
+      precio: i.precio_unitario,
       cantidad: String(i.cantidad),
       piezas: i.piezas,
       modo_piezas: modoDeItem(i.piezas),
+      ...modificacionGuardada(i.ajuste_tipo, i.ajuste_valor),
+      ajuste_motivo: i.ajuste_motivo ?? "",
     })),
-    ajuste_tipo: orden.ajuste === 0 ? "" : orden.ajuste < 0 ? "descuento" : "plus",
-    ajuste_modo: orden.ajuste_pct !== null ? "porcentaje" : "monto",
-    ajuste_valor:
-      orden.ajuste === 0
-        ? ""
-        : orden.ajuste_pct !== null
-          ? String(Math.abs(orden.ajuste_pct))
-          : textoDesdeCentavos(Math.abs(orden.ajuste)),
-    ajuste_motivo: orden.ajuste_motivo ?? "",
   };
 }
 
@@ -201,32 +306,6 @@ function modoDeItem(piezas: string | null): string {
   const valor = parsearPiezas(piezas);
   if (valor.modo === "arcada") return "arcada";
   return valor.modo === "partes" ? "piezas" : "cantidad";
-}
-
-/**
- * La cantidad que se cobra. Si el trabajo se carga por piezas, la cantidad es el
- * número de piezas elegidas y no se escribe a mano.
- */
-function cantidadDelItem(
-  item: { cantidad: string; piezas: string | null; modo_piezas: string } | undefined,
-): number | null {
-  if (!item) return null;
-
-  if (item.modo_piezas === "piezas") {
-    const elegidas = piezasSeleccionadas(parsearPiezas(item.piezas)).length;
-    return elegidas === 0 ? null : elegidas;
-  }
-
-  return /^\d+$/.test(item.cantidad) && Number(item.cantidad) > 0 ? Number(item.cantidad) : null;
-}
-
-/** El precio del catálogo: es el único que se cobra por el trabajo. */
-function precioDelItem(
-  item: { trabajo_id: string } | undefined,
-  porId: Map<string, TrabajoConPrecio>,
-): Centavos | null {
-  if (!item) return null;
-  return porId.get(item.trabajo_id)?.precio ?? null;
 }
 
 function valoresIniciales(): Formulario {
@@ -242,16 +321,11 @@ function valoresIniciales(): Formulario {
     entrega_hora: "",
     indicaciones: "",
     items: [{ ...ITEM_VACIO }],
-    ajuste_tipo: "",
-    ajuste_modo: "porcentaje",
-    ajuste_valor: "",
-    ajuste_motivo: "",
   };
 }
 
 export function FormularioOrden({
   doctores,
-  trabajos,
   obrasSociales,
   orden = null,
   onCreada,
@@ -259,7 +333,6 @@ export function FormularioOrden({
   onCancelar,
 }: {
   doctores: Doctor[];
-  trabajos: TrabajoConPrecio[];
   obrasSociales: ObraSocial[];
   /** Si viene una orden, el formulario la edita en vez de crear una nueva. */
   orden?: OrdenEditable | null;
@@ -299,30 +372,9 @@ export function FormularioOrden({
     }
   }, [doctorId, doctores, getValues, setValue]);
 
-  const porId = new Map(trabajos.map((t) => [String(t.id), t]));
-  const totalTrabajos = itemsMirados.reduce((suma, item) => {
-    const precio = precioDelItem(item, porId);
-    const cantidad = cantidadDelItem(item);
-    if (precio === null || cantidad === null) return suma;
-    return suma + precio * cantidad;
-  }, 0);
-
-  const ajusteTipo = watch("ajuste_tipo");
-  const ajusteModo = watch("ajuste_modo");
-  const ajusteValor = watch("ajuste_valor");
-  const ajuste = calcularAjuste(totalTrabajos, ajusteTipo, ajusteModo, ajusteValor);
-  const total = totalTrabajos + ajuste;
-
-  function ajusteParaGuardar(datos: Formulario): AjusteOrden | null {
-    if (datos.ajuste_tipo === "") return null;
-
-    const signo = datos.ajuste_tipo === "descuento" ? -1 : 1;
-    const motivo = datos.ajuste_motivo.trim();
-
-    return datos.ajuste_modo === "porcentaje"
-      ? { tipo: "porcentaje", porcentaje: signo * (porcentajeDesdeTexto(datos.ajuste_valor) ?? 0), motivo }
-      : { tipo: "monto", monto: signo * (centavosDesdeTexto(datos.ajuste_valor) ?? 0), motivo };
-  }
+  const totalCatalogo = itemsMirados.reduce((suma, item) => suma + (subtotalDelItem(item) ?? 0), 0);
+  const total = itemsMirados.reduce((suma, item) => suma + (importeDelItem(item) ?? 0), 0);
+  const diferencia = total - totalCatalogo;
 
   async function guardar(datos: Formulario) {
     const comunes = {
@@ -331,8 +383,8 @@ export function FormularioOrden({
         trabajo_id: Number(i.trabajo_id),
         cantidad: cantidadDelItem(i) ?? 1,
         piezas: i.piezas,
+        ajuste: ajusteParaGuardar(i),
       })),
-      ajuste: ajusteParaGuardar(datos),
       sexo: datos.sexo || null,
       edad: datos.edad === "" ? null : Number(datos.edad),
       obra_social_id: datos.obra_social_id ? Number(datos.obra_social_id) : null,
@@ -368,15 +420,14 @@ export function FormularioOrden({
       });
       paciente.current?.focus();
     } catch (error) {
+      const mensaje = (error as { message?: string }).message ?? "";
       toast.error(
-        (error as { message?: string }).message?.includes("precio vigente")
+        mensaje.includes("precio vigente")
           ? "Hay un trabajo sin precio vigente. Cargale el precio antes de usarlo en una orden."
-          : (error as { message?: string }).message?.includes("remito")
+          : mensaje.includes("remito")
             ? "La orden ya está en un remito: para cambiarla hay que corregir el remito."
-            : /descuento|plus|motivo|porcentaje/.test(
-                  (error as { message?: string }).message ?? "",
-                )
-              ? ((error as { message?: string }).message as string)
+            : /descuento|precio de un trabajo|100 %/.test(mensaje)
+              ? mensaje
               : "No se pudo guardar la orden. Revisá la conexión y probá de nuevo.",
         { duration: Infinity },
       );
@@ -502,7 +553,6 @@ export function FormularioOrden({
               key={campo.id}
               indice={i}
               formulario={formulario}
-              trabajos={trabajos}
               onQuitar={items.fields.length > 1 ? () => items.remove(i) : undefined}
             />
           ))}
@@ -517,123 +567,40 @@ export function FormularioOrden({
             Agregar trabajo
           </Button>
 
-          <div className="flex flex-wrap items-start gap-3 border-t border-border pt-4">
-            <Campo id="ajuste_tipo" etiqueta="Descuento o plus">
-              <Controller
-                control={control}
-                name="ajuste_tipo"
-                render={({ field }) => (
-                  <SelectSimple
-                    id="ajuste_tipo"
-                    valor={field.value}
-                    onCambio={field.onChange}
-                    ancho="w-40"
-                    placeholder="Sin ajuste"
-                    opciones={[
-                      { valor: "", etiqueta: "Sin ajuste" },
-                      { valor: "descuento", etiqueta: "Descuento" },
-                      { valor: "plus", etiqueta: "Plus" },
-                    ]}
-                  />
-                )}
-              />
-            </Campo>
+          {orden !== null && orden.ajuste !== 0 && (
+            <p className="text-xs text-warn">
+              Esta orden tenía {orden.ajuste < 0 ? "un descuento" : "un plus"} de{" "}
+              {formatARS(Math.abs(orden.ajuste))} sobre el total
+              {orden.ajuste_motivo ? ` (${orden.ajuste_motivo})` : ""}. Ahora el precio se
+              modifica en cada trabajo: al guardar, ese ajuste se quita. Si corresponde,
+              cargalo en el trabajo.
+            </p>
+          )}
 
-            {ajusteTipo !== "" && (
+          <div className="flex flex-col items-end gap-1 border-t border-border pt-4">
+            {diferencia !== 0 && (
               <>
-                <Campo id="ajuste_modo" etiqueta="Calculado">
-                  <Controller
-                    control={control}
-                    name="ajuste_modo"
-                    render={({ field }) => (
-                      <SelectSimple
-                        id="ajuste_modo"
-                        valor={field.value}
-                        onCambio={field.onChange}
-                        ancho="w-40"
-                        opciones={[
-                          { valor: "porcentaje", etiqueta: "Porcentaje" },
-                          { valor: "monto", etiqueta: "Monto fijo" },
-                        ]}
-                      />
-                    )}
-                  />
-                </Campo>
-
-                <Campo
-                  id="ajuste_valor"
-                  etiqueta={ajusteModo === "porcentaje" ? "Porcentaje" : "Importe"}
-                  requerido
-                  error={errors.ajuste_valor?.message}
-                >
-                  {ajusteModo === "porcentaje" ? (
-                    <Input
-                      id="ajuste_valor"
-                      inputMode="decimal"
-                      className="w-28"
-                      placeholder="10"
-                      aria-invalid={Boolean(errors.ajuste_valor)}
-                      {...register("ajuste_valor")}
-                    />
-                  ) : (
-                    <Controller
-                      control={control}
-                      name="ajuste_valor"
-                      render={({ field }) => (
-                        <InputMonto
-                          id="ajuste_valor"
-                          className="w-40"
-                          valor={field.value}
-                          onCambio={field.onChange}
-                          invalido={Boolean(errors.ajuste_valor)}
-                        />
-                      )}
-                    />
-                  )}
-                </Campo>
-
-                <Campo
-                  id="ajuste_motivo"
-                  etiqueta="Motivo"
-                  requerido
-                  error={errors.ajuste_motivo?.message}
-                >
-                  <Input
-                    id="ajuste_motivo"
-                    className="w-72"
-                    placeholder="Urgente, descuento acordado…"
-                    aria-invalid={Boolean(errors.ajuste_motivo)}
-                    {...register("ajuste_motivo")}
-                  />
-                </Campo>
+                <p className="flex items-baseline gap-3 text-xs text-ink-2">
+                  <span>Precio de catálogo</span>
+                  <span className="tabular-nums">{formatARS(totalCatalogo)}</span>
+                </p>
+                <p className="flex items-baseline gap-3 text-xs text-ink-2">
+                  <span>Modificaciones</span>
+                  <span className="tabular-nums">{formatARS(diferencia)}</span>
+                </p>
               </>
             )}
-
-            <div className="ml-auto flex flex-col items-end gap-1">
-              {ajuste !== 0 && (
-                <>
-                  <p className="flex items-baseline gap-3 text-xs text-ink-2">
-                    <span>Trabajos</span>
-                    <span className="tabular-nums">{formatARS(totalTrabajos)}</span>
-                  </p>
-                  <p className="flex items-baseline gap-3 text-xs text-ink-2">
-                    <span>{ajuste < 0 ? "Descuento" : "Plus"}</span>
-                    <span className="tabular-nums">{formatARS(ajuste)}</span>
-                  </p>
-                </>
-              )}
-              <p className="flex items-baseline gap-3">
-                <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-                  Total estimado
-                </span>
-                <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
-              </p>
-            </div>
+            <p className="flex items-baseline gap-3">
+              <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+                Total estimado
+              </span>
+              <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
+            </p>
           </div>
 
           <p className="text-xs text-ink-3">
-            Los precios salen del catálogo y los congela el servidor al guardar. Lo que se
-            acuerde de más o de menos va en el descuento o el plus.
+            Los precios salen del catálogo y los congela el servidor al guardar. Para cobrar
+            otro importe por un trabajo, clickeá su subtotal.
           </p>
         </div>
       </SeccionFormulario>
@@ -690,12 +657,10 @@ export function FormularioOrden({
 function FilaItem({
   indice,
   formulario,
-  trabajos,
   onQuitar,
 }: {
   indice: number;
   formulario: UseFormReturn<Formulario>;
-  trabajos: TrabajoConPrecio[];
   onQuitar?: () => void;
 }) {
   const {
@@ -706,15 +671,18 @@ function FilaItem({
     formState: { errors },
   } = formulario;
 
-  const porId = new Map(trabajos.map((t) => [String(t.id), t]));
   const item = watch(`items.${indice}`);
   const modo = item?.modo_piezas ?? "cantidad";
-  const precio = precioDelItem(item, porId);
-  const cantidad = cantidadDelItem(item);
-  const subtotal = precio !== null && cantidad !== null ? precio * cantidad : null;
+  const modificacion = item?.ajuste_modo ?? "";
+  const subtotal = subtotalDelItem(item);
+  const importe = importeDelItem(item);
   const erroresItem = errors.items?.[indice];
   const piezas = parsearPiezas(item?.piezas);
   const elegidas = piezasSeleccionadas(piezas).length;
+
+  // La fila de la modificación se abre al clickear el subtotal y queda abierta mientras haya una.
+  const [editandoPrecio, setEditandoPrecio] = useState(modificacion !== "");
+  const mostrarModificacion = editandoPrecio || modificacion !== "";
 
   /** Cambiar de modo limpia lo que ya no corresponde, para no dejar datos colgados. */
   function cambiarModo(nuevo: string) {
@@ -723,6 +691,37 @@ function FilaItem({
     if (nuevo !== "cantidad") setValue(`items.${indice}.cantidad`, nuevo === "arcada" ? "1" : "");
     else setValue(`items.${indice}.cantidad`, "1");
   }
+
+  /** El subtotal es el atajo: abre la modificación con el precio final ya escrito. */
+  function modificarPrecio() {
+    if (modificacion === "") {
+      setValue(`items.${indice}.ajuste_modo`, "precio");
+      setValue(
+        `items.${indice}.ajuste_valor`,
+        subtotal === null ? "" : formatearEntradaMonto(textoDesdeCentavos(subtotal)),
+      );
+    }
+    setEditandoPrecio(true);
+  }
+
+  function cambiarModificacion(nueva: string) {
+    setValue(`items.${indice}.ajuste_modo`, nueva, { shouldValidate: false });
+    if (nueva === "") {
+      setValue(`items.${indice}.ajuste_valor`, "");
+      setValue(`items.${indice}.ajuste_motivo`, "");
+      setEditandoPrecio(false);
+      return;
+    }
+    // El precio final arranca en el subtotal; el porcentaje y el monto, vacíos.
+    setValue(
+      `items.${indice}.ajuste_valor`,
+      nueva === "precio" && subtotal !== null
+        ? formatearEntradaMonto(textoDesdeCentavos(subtotal))
+        : "",
+    );
+  }
+
+  const idValor = `items.${indice}.ajuste_valor`;
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">
@@ -737,19 +736,24 @@ function FilaItem({
             control={control}
             name={`items.${indice}.trabajo_id`}
             render={({ field }) => (
-              <Combobox
+              <ComboboxTrabajo
                 id={`items.${indice}.trabajo_id`}
-                valor={field.value || null}
-                onCambio={(v) => field.onChange(v ?? "")}
+                elegido={
+                  field.value ? { id: field.value, titulo: item?.trabajo_titulo ?? "" } : null
+                }
+                onCambio={(trabajo) => {
+                  field.onChange(String(trabajo.id));
+                  setValue(`items.${indice}.trabajo_titulo`, trabajo.titulo);
+                  setValue(`items.${indice}.precio`, trabajo.precio);
+                  // El precio final escrito era para el trabajo anterior.
+                  if (modificacion === "precio") {
+                    setValue(`items.${indice}.ajuste_modo`, "");
+                    setValue(`items.${indice}.ajuste_valor`, "");
+                    setEditandoPrecio(false);
+                  }
+                }}
                 ancho="w-72"
                 invalido={Boolean(erroresItem?.trabajo_id)}
-                placeholder="Código o título…"
-                opciones={trabajos.map((t) => ({
-                  valor: String(t.id),
-                  etiqueta: t.titulo,
-                  busqueda: t.codigo,
-                  detalle: t.codigo,
-                }))}
               />
             )}
           />
@@ -827,12 +831,32 @@ function FilaItem({
         )}
 
         <div className="ml-auto flex items-start gap-3">
-          <p className="flex flex-col items-end">
+          <div className="flex flex-col items-end">
             <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
               Subtotal
             </span>
-            <span className="tabular-nums">{subtotal === null ? "—" : formatARS(subtotal)}</span>
-          </p>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="tabular-nums"
+                    disabled={subtotal === null}
+                    onClick={modificarPrecio}
+                  />
+                }
+              >
+                {importe === null ? "—" : formatARS(importe)}
+              </TooltipTrigger>
+              <TooltipContent>Modificar el precio de este trabajo</TooltipContent>
+            </Tooltip>
+            {modificacion !== "" && subtotal !== null && importe !== subtotal && (
+              <span className="text-xs text-ink-3 tabular-nums">
+                catálogo {formatARS(subtotal)}
+              </span>
+            )}
+          </div>
           {onQuitar && (
             <Tooltip>
               <TooltipTrigger
@@ -845,6 +869,79 @@ function FilaItem({
           )}
         </div>
       </div>
+
+      {mostrarModificacion && (
+        <div className="flex flex-wrap items-start gap-3 border-t border-border pt-3">
+          <Campo id={`items.${indice}.ajuste_modo`} etiqueta="Modificar precio">
+            <Controller
+              control={control}
+              name={`items.${indice}.ajuste_modo`}
+              render={({ field }) => (
+                <SelectSimple
+                  id={`items.${indice}.ajuste_modo`}
+                  valor={field.value}
+                  onCambio={(v) => cambiarModificacion(v ?? "")}
+                  ancho="w-44"
+                  opciones={MODIFICACIONES}
+                />
+              )}
+            />
+          </Campo>
+
+          {modificacion !== "" && (
+            <>
+              <Campo
+                id={idValor}
+                etiqueta={
+                  modificacion === "precio"
+                    ? "Se cobra"
+                    : esPorcentaje(modificacion)
+                      ? "Porcentaje"
+                      : "Importe"
+                }
+                requerido
+                error={erroresItem?.ajuste_valor?.message}
+              >
+                {esPorcentaje(modificacion) ? (
+                  <Input
+                    id={idValor}
+                    inputMode="decimal"
+                    className="w-28 text-right tabular-nums"
+                    placeholder="10"
+                    autoFocus={editandoPrecio}
+                    aria-invalid={Boolean(erroresItem?.ajuste_valor)}
+                    {...register(`items.${indice}.ajuste_valor`)}
+                  />
+                ) : (
+                  <Controller
+                    control={control}
+                    name={`items.${indice}.ajuste_valor`}
+                    render={({ field }) => (
+                      <InputMonto
+                        id={idValor}
+                        className="w-40"
+                        autoFocus={editandoPrecio}
+                        valor={field.value}
+                        onCambio={field.onChange}
+                        invalido={Boolean(erroresItem?.ajuste_valor)}
+                      />
+                    )}
+                  />
+                )}
+              </Campo>
+
+              <Campo id={`items.${indice}.ajuste_motivo`} etiqueta="Motivo">
+                <Input
+                  id={`items.${indice}.ajuste_motivo`}
+                  className="w-72"
+                  placeholder="Opcional: urgente, precio acordado…"
+                  {...register(`items.${indice}.ajuste_motivo`)}
+                />
+              </Campo>
+            </>
+          )}
+        </div>
+      )}
 
       {modo === "piezas" && (
         <>

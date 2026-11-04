@@ -110,7 +110,7 @@ export async function reportesDelMes(anio: number, mes: number): Promise<Reporte
   const { data, error } = await supabase
     .from("ordenes")
     .select(
-      "id, total, obras_sociales(nombre), orden_items(cantidad, subtotal, trabajos(codigo, titulo))",
+      "id, total, obras_sociales(nombre), orden_items(cantidad, importe, trabajos(codigo, titulo))",
     )
     .gte("fecha", desde)
     .lt("fecha", hasta)
@@ -120,7 +120,7 @@ export async function reportesDelMes(anio: number, mes: number): Promise<Reporte
   type OrdenCruda = {
     total: number;
     obras_sociales: { nombre: string } | null;
-    orden_items: { cantidad: number; subtotal: number; trabajos: { codigo: string; titulo: string } | null }[];
+    orden_items: { cantidad: number; importe: number; trabajos: { codigo: string; titulo: string } | null }[];
   };
 
   const porObra = new Map<string, FilaObraSocial>();
@@ -146,7 +146,7 @@ export async function reportesDelMes(anio: number, mes: number): Promise<Reporte
       porTrabajo.set(codigo, {
         ...previo,
         cantidad: previo.cantidad + item.cantidad,
-        total: previo.total + centavosDesdeNumeric(item.subtotal),
+        total: previo.total + centavosDesdeNumeric(item.importe),
       });
     }
   }
