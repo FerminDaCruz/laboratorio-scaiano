@@ -42,6 +42,16 @@ export const ETIQUETA_MEDIO: Record<MedioPago, string> = {
   otro: "Otro",
 };
 
+/** Con qué pagó el doctor. Se le cobra siempre en pesos: el importe está en pesos. */
+export type MonedaPago = "pesos" | "dolares";
+
+export const MONEDAS_PAGO: MonedaPago[] = ["pesos", "dolares"];
+
+export const ETIQUETA_MONEDA: Record<MonedaPago, string> = {
+  pesos: "Pesos",
+  dolares: "Dólares",
+};
+
 export type TipoMovimiento = "remito" | "pago" | "nota_credito" | "ajuste";
 
 export const ETIQUETA_TIPO_MOVIMIENTO: Record<TipoMovimiento, string> = {
@@ -159,6 +169,8 @@ export type MovimientoCC = {
   importe: Centavos; // > 0 debe (deuda) · < 0 haber (pago o crédito)
   remito_id: number | null;
   medio: MedioPago | null;
+  /** Solo un pago puede ser en dólares; en ese caso la referencia dice la cotización. */
+  moneda: MonedaPago;
   referencia: string | null;
   anula_movimiento_id: number | null;
 };

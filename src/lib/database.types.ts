@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.18"
   }
   graphql_public: {
     Tables: {
@@ -175,6 +175,7 @@ export type Database = {
           id: number
           importe: number
           medio: string | null
+          moneda: string
           referencia: string | null
           remito_id: number | null
           tipo: string
@@ -188,6 +189,7 @@ export type Database = {
           id?: never
           importe: number
           medio?: string | null
+          moneda?: string
           referencia?: string | null
           remito_id?: number | null
           tipo: string
@@ -201,6 +203,7 @@ export type Database = {
           id?: never
           importe?: number
           medio?: string | null
+          moneda?: string
           referencia?: string | null
           remito_id?: number | null
           tipo?: string
@@ -916,6 +919,7 @@ export type Database = {
           p_fecha?: string
           p_importe: number
           p_medio?: string
+          p_moneda?: string
           p_referencia?: string
         }
         Returns: Json

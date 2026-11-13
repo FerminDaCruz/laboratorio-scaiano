@@ -1320,3 +1320,38 @@ o sumar o restar un porcentaje o un monto fijo. El motivo es opcional.
 - Redeploy en Cloudflare Pages y prueba en el navegador
 
 ---
+
+### [2026-11-13] E9 · Pagos en dólares
+
+**Hecho**
+- Al registrar un pago se elige **Pagó en: Pesos / Dólares**. El importe se escribe siempre
+  en pesos (es lo que baja de la deuda); si fue en dólares, la **Referencia** pasa a ser
+  obligatoria y lleva la cotización a la que se tomó el dólar
+- "Últimos pagos" muestra la columna "Pagó en"; en el libro mayor el pago dice "· en dólares"
+- `movimientos_cc` suma la columna `moneda` (`pesos` por defecto, `dolares` solo en pagos).
+  Los asientos existentes no se tocan: quedan en pesos por el valor por defecto
+- `registrar_pago` recibe `p_moneda` y rechaza un pago en dólares sin referencia
+- Tests 7 a 9 en `supabase/tests/pagos.sql`
+
+**Archivos**
+- `supabase/migrations/20261113090000_pago_en_dolares.sql` (nuevo) · `supabase/tests/pagos.sql`
+- `src/lib/tipos.ts` · `src/components/cc/consultas.ts` · `src/app/pagos/page.tsx` ·
+  `src/app/cuenta-corriente/page.tsx` · `CLAUDE.md`
+
+**Decisiones**
+- La cotización no es un campo aparte ni se hace cuenta con ella: va como texto en la
+  referencia, como pidió el usuario. Saldos, antigüedad, cierre y reportes siguen en pesos
+  sin cambios
+- El front manda `p_moneda` solo cuando es en dólares, así los pagos en pesos siguen
+  andando aunque la migración no esté aplicada
+
+**Pendiente / bloqueado**
+- Redeploy en Cloudflare Pages
+- Los tests SQL no se corrieron (Docker apagado)
+
+**Aplicado** (con permiso del usuario): migración corrida en la nube, los 13 asientos
+existentes quedaron en pesos. Prueba en una transacción deshecha: un pago en dólares con
+referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaza.
+`database.types.ts` regenerado; `tsc` y `npm run build` pasan.
+
+---

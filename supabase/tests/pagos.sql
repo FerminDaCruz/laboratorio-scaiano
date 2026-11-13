@@ -64,4 +64,27 @@ exception when others then
 end;
 $$;
 
+\echo '--- 7. un pago en dolares se registra en pesos y queda anotada la moneda'
+select public.registrar_pago((select id from public.doctores where ficha = 100103), 125000.00,
+  current_date, 'efectivo', 'Dólar a 1.250', null, 'dolares') as pago_dolares;
+select m.importe, m.moneda, m.referencia from public.movimientos_cc m
+  join public.doctores d on d.id = m.doctor_id
+ where d.ficha = 100103 and m.tipo = 'pago' order by m.id desc limit 1;
+
+\echo '--- 8. un pago en dolares sin cotizacion se rechaza'
+do $$
+begin
+  perform public.registrar_pago((select id from public.doctores where ficha = 100103), 1000.00,
+    current_date, 'efectivo', '  ', null, 'dolares');
+  raise exception 'ERROR: deberia haber fallado';
+exception when others then
+  raise notice 'rechazado como corresponde: %', sqlerrm;
+end;
+$$;
+
+\echo '--- 9. los pagos de antes quedan en pesos'
+select count(*) filter (where moneda = 'pesos') as en_pesos, count(*) as pagos
+  from public.movimientos_cc m join public.doctores d on d.id = m.doctor_id
+ where d.ficha = 100103 and m.tipo = 'pago';
+
 rollback;

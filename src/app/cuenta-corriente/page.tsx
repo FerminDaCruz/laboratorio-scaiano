@@ -240,7 +240,10 @@ function DetalleCuenta({ doctorId }: { doctorId: number }) {
                 return (
                   <TableRow key={m.id}>
                     <TableCell>{formatFechaCorta(m.fecha)}</TableCell>
-                    <TableCell>{ETIQUETA_TIPO_MOVIMIENTO[m.tipo]}</TableCell>
+                    <TableCell>
+                      {ETIQUETA_TIPO_MOVIMIENTO[m.tipo]}
+                      {m.moneda === "dolares" && <span className="text-ink-3"> · en dólares</span>}
+                    </TableCell>
                     <TableCell>{m.referencia ?? "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {m.importe > 0 ? formatARS(m.importe) : ""}

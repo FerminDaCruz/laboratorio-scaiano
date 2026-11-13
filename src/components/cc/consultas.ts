@@ -1,7 +1,7 @@
 import { rangoDelMes } from "@/components/liquidaciones/consultas";
 import { centavosDesdeNumeric, numericParaPostgres, type Centavos } from "@/lib/money";
 import { getSupabase } from "@/lib/supabase";
-import type { Doctor, MedioPago, MovimientoCC, TipoMovimiento } from "@/lib/tipos";
+import type { Doctor, MedioPago, MonedaPago, MovimientoCC, TipoMovimiento } from "@/lib/tipos";
 
 export type EstadoCuenta = "a_favor" | "al_dia" | "con_deuda" | "vencida";
 
@@ -191,12 +191,16 @@ export async function trabajosDelMes(doctorId: number, hoy = new Date()): Promis
 /**
  * Registra un pago. Se descuenta del saldo total del doctor: el servidor lo aplica
  * solo, de lo más viejo a lo más nuevo, y lo que sobre queda a favor.
+ *
+ * El importe va siempre en pesos. Si el doctor pagó con dólares queda anotado, y la
+ * referencia lleva la cotización a la que se tomó el dólar (el servidor la exige).
  */
 export async function registrarPago(datos: {
   doctorId: number;
   importe: Centavos;
   fecha: string;
   medio: MedioPago;
+  moneda: MonedaPago;
   referencia: string | null;
 }): Promise<{ aFavor: Centavos }> {
   const { data, error } = await getSupabase().rpc("registrar_pago", {
@@ -205,6 +209,8 @@ export async function registrarPago(datos: {
     p_fecha: datos.fecha,
     p_medio: datos.medio,
     ...(datos.referencia ? { p_referencia: datos.referencia } : {}),
+    // En pesos no se manda: es el valor por defecto del servidor.
+    ...(datos.moneda === "dolares" ? { p_moneda: datos.moneda } : {}),
   });
   if (error) throw error;
 
@@ -234,6 +240,7 @@ export async function listarPagos(limite = 50): Promise<PagoListado[]> {
     return {
       ...(resto as unknown as MovimientoCC),
       importe: centavosDesdeNumeric(fila.importe as number),
+      moneda: (resto.moneda as MonedaPago | undefined) ?? "pesos",
       doctor: doctores,
     };
   });

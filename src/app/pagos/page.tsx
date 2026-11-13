@@ -37,7 +37,15 @@ import { alTeclearEnFormulario } from "@/hooks/use-atajos";
 import { useConsulta } from "@/hooks/use-consulta";
 import { formatFechaCorta } from "@/lib/format";
 import { centavosDesdeTexto, formatARS, type Centavos } from "@/lib/money";
-import { ETIQUETA_MEDIO, MEDIOS_PAGO, type Doctor, type MedioPago } from "@/lib/tipos";
+import {
+  ETIQUETA_MEDIO,
+  ETIQUETA_MONEDA,
+  MEDIOS_PAGO,
+  MONEDAS_PAGO,
+  type Doctor,
+  type MedioPago,
+  type MonedaPago,
+} from "@/lib/tipos";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
@@ -56,12 +64,15 @@ function Pagos() {
   const [importe, setImporte] = useState("");
   const [fecha, setFecha] = useState(hoy());
   const [medio, setMedio] = useState<MedioPago>("efectivo");
+  const [moneda, setMoneda] = useState<MonedaPago>("pesos");
   const [referencia, setReferencia] = useState("");
   const [errores, setErrores] = useState<{
     doctor?: string;
     importe?: string;
     fecha?: string;
+    referencia?: string;
   }>({});
+  const enDolares = moneda === "dolares";
   const [guardando, setGuardando] = useState(false);
 
   const { consulta: consultaDoctores } = useConsulta<Doctor[]>(
@@ -101,6 +112,8 @@ function Pagos() {
     if (centavos === null) nuevos.importe = "El importe no es un monto válido.";
     else if (centavos <= 0) nuevos.importe = "El importe tiene que ser mayor que cero.";
     if (!fecha) nuevos.fecha = "Poné la fecha del pago.";
+    if (enDolares && referencia.trim() === "")
+      nuevos.referencia = "Poné a cuánto se tomó el dólar.";
     setErrores(nuevos);
     if (Object.keys(nuevos).length > 0 || centavos === null) return;
 
@@ -111,6 +124,7 @@ function Pagos() {
         importe: centavos,
         fecha,
         medio,
+        moneda,
         referencia: referencia.trim() === "" ? null : referencia.trim(),
       });
 
@@ -121,6 +135,7 @@ function Pagos() {
       );
       setImporte("");
       setReferencia("");
+      setMoneda("pesos");
       recargarPagos();
       recargarCuenta();
     } catch {
@@ -158,7 +173,7 @@ function Pagos() {
                 id="importe"
                 etiqueta="Importe"
                 error={errores.importe}
-                ayuda="Por ejemplo 100.000,50"
+                ayuda={enDolares ? "En pesos: lo que baja de la deuda" : "Por ejemplo 100.000,50"}
                 requerido
               >
                 <InputMonto
@@ -188,10 +203,37 @@ function Pagos() {
                   opciones={MEDIOS_PAGO.map((m) => ({ valor: m, etiqueta: ETIQUETA_MEDIO[m] }))}
                 />
               </Campo>
+              <Campo id="moneda" etiqueta="Pagó en">
+                <SelectSimple
+                  id="moneda"
+                  valor={moneda}
+                  onCambio={(v) => {
+                    setMoneda(v as MonedaPago);
+                    setErrores((e) => ({ ...e, referencia: undefined }));
+                  }}
+                  ancho="w-44"
+                  opciones={MONEDAS_PAGO.map((m) => ({ valor: m, etiqueta: ETIQUETA_MONEDA[m] }))}
+                />
+              </Campo>
             </div>
 
-            <Campo id="referencia" etiqueta="Referencia" ayuda="Número de transferencia, cheque o lo que corresponda.">
-              <Input id="referencia" value={referencia} onChange={(e) => setReferencia(e.target.value)} />
+            <Campo
+              id="referencia"
+              etiqueta="Referencia"
+              error={errores.referencia}
+              requerido={enDolares}
+              ayuda={
+                enDolares
+                  ? "A cuánto se tomó el dólar, por ejemplo: dólar a 1.250."
+                  : "Número de transferencia, cheque o lo que corresponda."
+              }
+            >
+              <Input
+                id="referencia"
+                value={referencia}
+                aria-invalid={errores.referencia ? true : undefined}
+                onChange={(e) => setReferencia(e.target.value)}
+              />
             </Campo>
           </div>
         </SeccionFormulario>
@@ -225,6 +267,7 @@ function Pagos() {
           onCancelar={() => {
             setImporte("");
             setReferencia("");
+            setMoneda("pesos");
             setErrores({});
           }}
           guardando={guardando}
@@ -253,6 +296,7 @@ function Pagos() {
                     <TableHead className="w-24">Fecha</TableHead>
                     <TableHead>Doctor</TableHead>
                     <TableHead className="w-36">Medio</TableHead>
+                    <TableHead className="w-28">Pagó en</TableHead>
                     <TableHead>Referencia</TableHead>
                     <TableHead className="text-right">Importe</TableHead>
                   </TableRow>
@@ -263,6 +307,7 @@ function Pagos() {
                       <TableCell>{formatFechaCorta(p.fecha)}</TableCell>
                       <TableCell>{p.doctor?.nombre ?? "—"}</TableCell>
                       <TableCell>{p.medio ? ETIQUETA_MEDIO[p.medio] : "—"}</TableCell>
+                      <TableCell>{ETIQUETA_MONEDA[p.moneda]}</TableCell>
                       <TableCell>{p.referencia ?? "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatARS(-p.importe)}</TableCell>
                     </TableRow>

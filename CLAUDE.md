@@ -193,6 +193,9 @@ docs/
   particular: no se elige a qué se imputa. Por dentro el servidor lo aplica de lo más viejo
   a lo más nuevo (sirve para la antigüedad de la deuda), pero en pantalla no hay "pendiente"
   por trabajo.
+- **Se cobra siempre en pesos**, pero algunos doctores pagan con dólares. El pago se registra
+  en pesos y queda anotado que fue en dólares (`movimientos_cc.moneda`); la cotización a la
+  que se tomó el dólar va en la referencia, que en ese caso es obligatoria.
 - **Un remito emitido no se edita.** Para corregirlo se lo anula —queda el contra-asiento— y
   se emite uno nuevo con las mismas órdenes.
 - **"Ps" y "dto"** en la ficha del doctor son **piso y departamento** — parte del
