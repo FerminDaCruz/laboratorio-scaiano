@@ -1472,3 +1472,16 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
   facturado en el mes
 
 ---
+
+### [2026-11-16] Remitos · El bloque de cuenta corriente cierra a la vista
+
+**Hecho**
+- "Saldo anterior" del remito pasa a ser el cierre del mes pasado **más lo facturado en el
+  mes en otros remitos**. Así siempre se cumple: saldo anterior − pagos del mes + este
+  ticket = saldo total (antes, desde el segundo remito del mes, faltaba lo facturado)
+- `resumenDeCuenta` (`src/components/remitos/consultas.ts`) devuelve solo los cuatro valores
+  que imprime el ticket; se sacaron `facturadoMes` y `saldoCuenta` del tipo
+- El saldo total no cambia: es el mismo número que antes
+- Resuelve el pendiente de la entrada anterior. `tsc` pasa
+
+---

@@ -180,16 +180,16 @@ export async function anularRemito(remitoId: number, motivo: string): Promise<vo
 
 export type ResumenCuenta = {
   saldoAnterior: Centavos;
-  facturadoMes: Centavos;
   pagosMes: Centavos;
-  saldoCuenta: Centavos;
   esteTicket: Centavos;
   saldoTotal: Centavos;
 };
 
 /**
- * Bloque de cuenta corriente que lleva el remito. "Saldo anterior" es el cierre
- * del mes pasado; "este ticket" es el remito que se está imprimiendo.
+ * Bloque de cuenta corriente que lleva el remito, armado para que cierre a la vista:
+ * saldo anterior − pagos del mes + este ticket = saldo total.
+ * "Saldo anterior" es lo que el doctor debía sin contar los pagos del mes ni este
+ * ticket: el cierre del mes pasado más lo facturado en el mes en otros remitos.
  */
 export async function resumenDeCuenta(
   doctorId: number,
@@ -222,13 +222,11 @@ export async function resumenDeCuenta(
     else pagosMes += -importe;
   }
 
-  const saldoCuenta = saldoAnterior + facturadoMes - pagosMes;
+  const anterior = saldoAnterior + facturadoMes;
   return {
-    saldoAnterior,
-    facturadoMes,
+    saldoAnterior: anterior,
     pagosMes,
-    saldoCuenta,
     esteTicket: totalRemito,
-    saldoTotal: saldoCuenta + totalRemito,
+    saldoTotal: anterior - pagosMes + totalRemito,
   };
 }
