@@ -279,6 +279,9 @@ Reglas duras:
   filtra al tipear tres letras. El de trabajo no precarga el catálogo: trae una tanda, suma
   la siguiente al llegar al final de la lista con el scroll o las flechas, y busca en la
   base al tipear dos letras.
+- En `select` y `command`, la opción resaltada (mouse o flechas) lleva fondo `accent` y texto
+  `accent-ink`, igual que el ítem activo del sidebar. `accent-soft` no alcanzaba a
+  distinguirse.
 
 ---
 

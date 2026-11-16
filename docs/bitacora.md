@@ -1394,3 +1394,21 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - Probar con la lectora real que una comanda nueva se encuentra al escanearla en la búsqueda
 
 ---
+
+### [2026-11-16] UI · Opción resaltada más visible en select y combobox
+
+**Hecho**
+- La encargada del laboratorio no distinguía la opción resaltada (mouse o flechas) en los
+  desplegables: el fondo `accent-soft` era demasiado suave
+- `SelectItem` (`src/components/ui/select.tsx`) y `CommandItem` / `CommandShortcut`
+  (`src/components/ui/command.tsx`) ahora usan fondo `accent` con texto `accent-ink`, el
+  mismo par que el ítem activo del sidebar. No se agregó ningún color nuevo
+- El texto secundario dentro de la opción (por ejemplo el código del trabajo) también pasa
+  a `accent-ink` mientras está resaltada, para que no quede gris sobre el teal
+- Documentado en `docs/design-system.md` (§ accesibilidad)
+
+**Pendiente / bloqueado**
+- Que la encargada confirme que ahora se distingue bien
+- Los menús `dropdown-menu` siguen con `accent-soft`: no son selects y no se tocaron
+
+---
