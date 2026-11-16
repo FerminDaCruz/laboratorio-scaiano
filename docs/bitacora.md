@@ -1456,3 +1456,19 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - Ver cómo sale el logo en la térmica: imprime en blanco y negro, el celeste sale gris
 
 ---
+
+### [2026-11-16] Remitos · Cuenta corriente reducida en el ticket
+
+**Hecho**
+- El bloque "CUENTA CORRIENTE" del remito muestra solo saldo anterior, pagos del mes, este
+  ticket y saldo total. Se quitaron fact/mes, saldo cta cte y OT entregadas
+  (`src/components/documentos/remito.tsx`). El cálculo (`resumenDeCuenta`) no cambió
+- `tsc` pasa
+
+**Pendiente / bloqueado**
+- Con los renglones que quedan, la cuenta no cierra a la vista cuando el doctor ya tuvo
+  remitos en el mes: "saldo anterior" es el saldo al cierre del mes pasado y lo facturado
+  en el mes ya no aparece. Consultado al usuario si "saldo anterior" debe incluir lo
+  facturado en el mes
+
+---

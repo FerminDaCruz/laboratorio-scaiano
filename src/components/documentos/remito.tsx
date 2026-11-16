@@ -153,20 +153,8 @@ export function DocumentoRemito({
               <td className="num">{formatARS(cuenta.saldoAnterior)}</td>
             </tr>
             <tr>
-              <td>fact/mes</td>
-              <td className="num">{formatARS(cuenta.facturadoMes)}</td>
-            </tr>
-            <tr>
               <td>pagos del mes</td>
               <td className="num">{formatARS(cuenta.pagosMes)}</td>
-            </tr>
-            <tr>
-              <td>saldo cta cte</td>
-              <td className="num">{formatARS(cuenta.saldoCuenta)}</td>
-            </tr>
-            <tr>
-              <td>OT entregadas</td>
-              <td className="num">{lineas.length}</td>
             </tr>
             <tr>
               <td>este ticket</td>
