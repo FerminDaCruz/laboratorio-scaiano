@@ -50,8 +50,17 @@ export function DocumentoLiquidacion({
         .liquidacion .leyenda { margin-top: 6mm; text-align: center; text-transform: uppercase; }
 
         @media print {
-          @page { size: A4 portrait; margin: 10mm; }
-          .liquidacion { width: auto; padding: 0; page-break-after: always; }
+          /* Sin margen arriba y abajo el navegador no tiene dónde poner su encabezado y
+             su pie (la URL, la fecha, el título). El margen pasa a ser padding, repetido
+             en cada hoja si la liquidación ocupa más de una. */
+          @page { size: A4 portrait; margin: 0 10mm; }
+          .liquidacion {
+            width: auto;
+            padding: 10mm 0;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+            page-break-after: always;
+          }
         }
       `}</style>
 

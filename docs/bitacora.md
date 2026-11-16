@@ -1485,3 +1485,20 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - Resuelve el pendiente de la entrada anterior. `tsc` pasa
 
 ---
+
+### [2026-11-16] Liquidaciones · Sin la URL del programa al imprimir
+
+**Hecho**
+- La URL al pie de la hoja (y la fecha y el título arriba) los agrega el navegador en el
+  margen de la página. La liquidación ahora usa `@page { margin: 0 10mm }`: sin margen arriba
+  y abajo el navegador no los imprime
+- El margen de 10 mm arriba y abajo pasa a ser padding de la liquidación, con
+  `box-decoration-break: clone` para que se repita en cada hoja si ocupa más de una
+- `tsc` pasa
+
+**Pendiente / bloqueado**
+- Probar la impresión en el navegador del laboratorio. Si igual aparece la URL, se saca
+  destildando "Encabezados y pies de página" en el diálogo de impresión
+- El remito no se tocó (no se pidió)
+
+---
