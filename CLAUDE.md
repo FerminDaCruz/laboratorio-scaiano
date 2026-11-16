@@ -178,17 +178,19 @@ docs/
 - **La cantidad y las piezas no se cargan dos veces.** Un ítem se cobra por cantidad (un
   número escrito) o por piezas (se clickean en el odontograma y la cantidad sale de ahí).
   Tres o más piezas contiguas se agrupan solas en un tramo.
-- **Un remito agrupa varias OT** del mismo doctor. No es una por una.
+- **Un remito por comanda.** Comandas distintas se tratan por separado: la bandeja de
+  "Nuevo remito" puede juntar varias (de cualquier doctor), pero al emitir sale un remito
+  por cada OT, y se imprimen todos seguidos en la misma impresión, un ticket cada uno.
+  `emitir_remito` acepta varias OT, pero la pantalla le pasa una sola. Los remitos viejos
+  con varias OT se siguen mostrando.
 - **El precio del catálogo cambia con el tiempo.** El catálogo tiene historial con
   fecha de vigencia; la orden guarda el precio del día en que se cargó.
-- **Los descuentos y los plus** nunca cambian el precio del catálogo. Se pueden poner en
-  dos lugares:
-  - en cada trabajo de la orden, mientras no esté facturada: sobre el subtotal (catálogo ×
-    cantidad) se escribe el precio final, o se suma o resta un porcentaje o un monto fijo.
-    El ítem guarda las dos cosas: el subtotal de catálogo y lo que se cobra. El motivo es
-    **opcional**. Ya no hay ajuste sobre el total de la orden (las órdenes viejas que lo
-    tienen lo siguen mostrando).
-  - en el remito al emitirlo, sobre el total. Ese sí pide motivo y sale impreso.
+- **Los descuentos y los plus** nunca cambian el precio del catálogo. Se ponen solo en
+  cada trabajo de la orden, mientras no esté facturada: sobre el subtotal (catálogo ×
+  cantidad) se escribe el precio final, o se suma o resta un porcentaje o un monto fijo.
+  El ítem guarda las dos cosas: el subtotal de catálogo y lo que se cobra. El motivo es
+  **opcional**. Ya no hay ajuste sobre el total de la orden ni sobre el remito (las
+  órdenes y los remitos viejos que lo tienen lo siguen mostrando).
 - **Los pagos se descuentan del saldo total del doctor**, no de un trabajo o un remito en
   particular: no se elige a qué se imputa. Por dentro el servidor lo aplica de lo más viejo
   a lo más nuevo (sirve para la antigüedad de la deuda), pero en pantalla no hay "pendiente"

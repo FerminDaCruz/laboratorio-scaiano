@@ -7,8 +7,6 @@ import { toast } from "sonner";
 import { listarDoctoresParaCombo } from "@/components/doctores/datos";
 import { Campo } from "@/components/formulario/campo";
 import { Combobox } from "@/components/formulario/combobox";
-import { InputMonto } from "@/components/formulario/input-monto";
-import { SelectSimple } from "@/components/formulario/select-simple";
 import { ErrorConsulta } from "@/components/listado/pagina-listado";
 import { emitirRemito } from "@/components/remitos/consultas";
 import {
@@ -29,14 +27,12 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConsulta } from "@/hooks/use-consulta";
-import { formatFechaCorta, formatOT } from "@/lib/format";
-import { centavosDesdeTexto, formatARS } from "@/lib/money";
+import { formatFechaCorta, formatOT, formatRemito } from "@/lib/format";
+import { formatARS } from "@/lib/money";
 import { interpretarEscaneo, useFocoDeEscaneo } from "@/lib/scanner";
 import type { Doctor } from "@/lib/tipos";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
-
-type TipoAjuste = "" | "descuento" | "recargo";
 
 export default function NuevoRemitoPage() {
   return (
@@ -58,21 +54,10 @@ function NuevoRemito() {
   const [bandeja, setBandeja] = useState<OrdenConDoctor[]>([]);
   const [emitiendo, setEmitiendo] = useState(false);
 
-  const [tipoAjuste, setTipoAjuste] = useState<TipoAjuste>("");
-  const [importeAjuste, setImporteAjuste] = useState("");
-  const [motivoAjuste, setMotivoAjuste] = useState("");
-  const [errorAjuste, setErrorAjuste] = useState<string>();
-
-  const doctor = bandeja[0]?.doctor ?? null;
-  const doctorId = bandeja[0]?.doctor_id ?? null;
-  const trabajos = bandeja.reduce((suma, o) => suma + o.total, 0);
-  const ajuste =
-    tipoAjuste === "" ? 0 : (centavosDesdeTexto(importeAjuste) ?? 0) * (tipoAjuste === "descuento" ? -1 : 1);
-  const total = trabajos + ajuste;
-
-  // Un remito lleva órdenes de un solo doctor: con la bandeja empezada, el doctor ya está
-  // definido y el filtro deja de decidir.
-  const doctorEfectivo = doctorId !== null ? String(doctorId) : doctorFiltro;
+  // Cada comanda de la bandeja sale en su propio remito, así que se pueden mezclar
+  // doctores. Los descuentos y los plus se ponen en cada trabajo de la orden.
+  const total = bandeja.reduce((suma, o) => suma + o.total, 0);
+  const doctorEfectivo = doctorFiltro;
 
   const { consulta: consultaDoctores } = useConsulta<Doctor[]>(
     () => listarDoctoresParaCombo(),
@@ -160,53 +145,47 @@ function NuevoRemito() {
       toast.error(`La OT ${formatOT(orden.numero)} ya está en la bandeja.`);
       return;
     }
-    if (doctorId !== null && orden.doctor_id !== doctorId) {
-      toast.error(
-        `La OT ${formatOT(orden.numero)} es de ${orden.doctor?.nombre ?? "otro doctor"}. Un remito lleva órdenes de un solo doctor.`,
-      );
-      return;
-    }
-
     setBandeja((actual) => [...actual, orden]);
   }
 
+  /**
+   * Emite un remito por cada comanda de la bandeja, de a uno y en el orden de la bandeja.
+   * Cada emisión es su propia transacción: si una falla, las ya emitidas quedan hechas
+   * y salen de la bandeja; las que faltan quedan para reintentar.
+   */
   async function emitir() {
-    if (doctorId === null || bandeja.length === 0) return;
-
-    if (tipoAjuste !== "") {
-      const importe = centavosDesdeTexto(importeAjuste);
-      if (importe === null || importe <= 0) {
-        setErrorAjuste("Poné el importe del ajuste.");
-        return;
-      }
-      if (motivoAjuste.trim() === "") {
-        setErrorAjuste("Un descuento o un recargo necesita un motivo.");
-        return;
-      }
-      if (total < 0) {
-        setErrorAjuste("El descuento no puede ser mayor que el total.");
-        return;
-      }
-    }
-    setErrorAjuste(undefined);
+    if (bandeja.length === 0 || emitiendo) return;
 
     setEmitiendo(true);
-    try {
-      const remito = await emitirRemito(
-        doctorId,
-        bandeja.map((o) => o.id),
-        fecha,
-        ajuste,
-        motivoAjuste,
-      );
-      toast.success(`Remito emitido: ${formatOT(remito.numero)}`);
-      router.push(`/remitos/documento?remito=${remito.numero}`);
-    } catch {
-      toast.error("No se pudo emitir el remito. Revisá la conexión y probá de nuevo.", {
-        duration: Infinity,
-      });
-      setEmitiendo(false);
+    const emitidos: number[] = [];
+    const emitidas: number[] = [];
+    for (const orden of bandeja) {
+      try {
+        const remito = await emitirRemito(orden.doctor_id, [orden.id], fecha);
+        emitidos.push(remito.numero);
+        emitidas.push(orden.id);
+      } catch {
+        const hechos =
+          emitidos.length > 0
+            ? ` Ya se emitieron ${emitidos.length} (${emitidos.map(formatRemito).join(", ")}); las demás siguen en la bandeja.`
+            : "";
+        toast.error(
+          `No se pudo emitir el remito de la OT ${formatOT(orden.numero)}. Revisá la conexión y probá de nuevo.${hechos}`,
+          { duration: Infinity },
+        );
+        setBandeja((actual) => actual.filter((o) => !emitidas.includes(o.id)));
+        setEmitiendo(false);
+        recargarPendientes();
+        return;
+      }
     }
+
+    toast.success(
+      emitidos.length === 1
+        ? `Remito emitido: ${formatRemito(emitidos[0])}`
+        : `Remitos emitidos: ${emitidos.map(formatRemito).join(", ")}`,
+    );
+    router.push(`/remitos/documento?remitos=${emitidos.join(",")}`);
   }
 
   function procesar() {
@@ -238,7 +217,7 @@ function NuevoRemito() {
             id="escaneo"
             ref={campo}
             className="font-mono"
-            placeholder="OT-000003"
+            placeholder="0000003"
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
@@ -262,8 +241,7 @@ function NuevoRemito() {
           )}
         </div>
 
-        {doctorId === null ? (
-          <div className="max-w-[320px]">
+        <div className="max-w-[320px]">
             <Campo id="doctor_filtro" etiqueta="Doctor" ayuda="Vacío muestra las de todos.">
               <Combobox
                 id="doctor_filtro"
@@ -279,12 +257,6 @@ function NuevoRemito() {
               />
             </Campo>
           </div>
-        ) : (
-          <p className="text-xs text-ink-2">
-            Un remito lleva órdenes de un solo doctor, así que se muestran solo las de{" "}
-            {doctor?.nombre ?? "este doctor"}.
-          </p>
-        )}
 
         {consultaPendientes.estado === "cargando" && <Skeleton className="h-24 w-full" />}
         {consultaPendientes.estado === "error" && (
@@ -294,9 +266,7 @@ function NuevoRemito() {
           <div className="overflow-hidden rounded-md border border-border bg-surface">
             {pendientes.length === 0 ? (
               <p className="p-4 text-ink-3">
-                {bandeja.length > 0
-                  ? "No quedan comandas sin facturar de este doctor."
-                  : "No hay comandas sin facturar."}
+                {bandeja.length > 0 ? "No quedan comandas sin facturar." : "No hay comandas sin facturar."}
               </p>
             ) : (
               <Table>
@@ -349,7 +319,7 @@ function NuevoRemito() {
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-            Bandeja {doctor ? `· ${doctor.nombre}` : ""}
+            Bandeja
           </h2>
           <Campo id="fecha" etiqueta="Fecha del remito">
             <Input
@@ -374,6 +344,7 @@ function NuevoRemito() {
                 <TableRow>
                   <TableHead className="w-24">OT</TableHead>
                   <TableHead className="w-24">Fecha</TableHead>
+                  <TableHead>Doctor</TableHead>
                   <TableHead>Paciente</TableHead>
                   <TableHead className="text-right">Importe</TableHead>
                   <TableHead className="w-12" />
@@ -384,6 +355,7 @@ function NuevoRemito() {
                   <TableRow key={orden.id}>
                     <TableCell className="font-mono">{formatOT(orden.numero)}</TableCell>
                     <TableCell>{formatFechaCorta(orden.fecha)}</TableCell>
+                    <TableCell>{orden.doctor?.nombre ?? "—"}</TableCell>
                     <TableCell>{orden.paciente}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatARS(orden.total)}</TableCell>
                     <TableCell>
@@ -412,81 +384,19 @@ function NuevoRemito() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-          Descuento o recargo
-        </h2>
-        <div className="flex flex-wrap items-start gap-3">
-          <Campo id="tipo_ajuste" etiqueta="Ajuste">
-            <SelectSimple
-              id="tipo_ajuste"
-              valor={tipoAjuste}
-              onCambio={(v) => {
-                setTipoAjuste(v as TipoAjuste);
-                setErrorAjuste(undefined);
-              }}
-              ancho="w-44"
-              placeholder="Sin ajuste"
-              opciones={[
-                { valor: "", etiqueta: "Sin ajuste" },
-                { valor: "descuento", etiqueta: "Descuento" },
-                { valor: "recargo", etiqueta: "Recargo" },
-              ]}
-            />
-          </Campo>
-
-          {tipoAjuste !== "" && (
-            <>
-              <Campo id="importe_ajuste" etiqueta="Importe">
-                <InputMonto
-                  id="importe_ajuste"
-                  className="w-40"
-                  valor={importeAjuste}
-                  invalido={Boolean(errorAjuste)}
-                  onCambio={(v) => {
-                    setImporteAjuste(v);
-                    setErrorAjuste(undefined);
-                  }}
-                />
-              </Campo>
-              <Campo
-                id="motivo_ajuste"
-                etiqueta="Motivo"
-                error={errorAjuste}
-                ayuda="Queda escrito en el remito."
-              >
-                <Input
-                  id="motivo_ajuste"
-                  className="w-72"
-                  value={motivoAjuste}
-                  onChange={(e) => {
-                    setMotivoAjuste(e.target.value);
-                    setErrorAjuste(undefined);
-                  }}
-                  placeholder="Entrega urgente, descuento acordado…"
-                />
-              </Campo>
-            </>
-          )}
-        </div>
-      </section>
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          {ajuste !== 0 && (
-            <p className="flex items-baseline gap-3 text-xs text-ink-2">
-              <span>Trabajos {formatARS(trabajos)}</span>
-              <span>
-                {ajuste < 0 ? "Descuento" : "Recargo"} {formatARS(ajuste)}
-              </span>
-            </p>
-          )}
           <p className="flex items-baseline gap-3">
             <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-              Total del remito
+              Total
             </span>
             <span className="text-lg font-semibold tabular-nums">{formatARS(total)}</span>
           </p>
+          {bandeja.length > 1 && (
+            <p className="text-xs text-ink-2">
+              Sale un remito por comanda: {bandeja.length} remitos, impresos uno detrás del otro.
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -494,7 +404,11 @@ function NuevoRemito() {
             Vaciar bandeja
           </Button>
           <Button onClick={emitir} disabled={bandeja.length === 0 || emitiendo}>
-            {emitiendo ? "Emitiendo…" : "Emitir remito"}
+            {emitiendo
+              ? "Emitiendo…"
+              : bandeja.length > 1
+                ? `Emitir ${bandeja.length} remitos`
+                : "Emitir remito"}
           </Button>
         </div>
       </div>

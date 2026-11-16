@@ -1412,3 +1412,29 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - Los menús `dropdown-menu` siguen con `accent-soft`: no son selects y no se tocaron
 
 ---
+
+### [2026-11-16] Remitos · Un remito por comanda, impresos seguidos
+
+**Hecho**
+- Regla nueva pedida por el usuario: comandas distintas se tratan por separado. Al emitir
+  con varias comandas en la bandeja sale **un remito por OT** (su número, su asiento y su
+  ticket), en el orden de la bandeja
+- La bandeja ya no se limita a un doctor: se pueden mezclar comandas de doctores distintos
+  y cada remito queda a nombre del doctor de su comanda. La bandeja muestra la columna Doctor
+- Se sacó el descuento o recargo del remito: los ajustes van en cada trabajo de la orden.
+  Los remitos viejos que lo tienen lo siguen mostrando en el ticket
+- `/remitos/documento` acepta `?remitos=12,13,14` (y sigue aceptando `?remito=12`): muestra
+  todos los tickets y los imprime en una sola impresión, con un corte de página entre uno
+  y otro (sin hoja en blanco al final), como las liquidaciones
+- Cada emisión es su propia transacción (`emitir_remito` con una OT). Si una falla a mitad,
+  las ya emitidas quedan hechas y salen de la bandeja, y el aviso dice cuáles se emitieron
+- El placeholder del campo de escaneo pasa a `0000003` (el código de barras ya no lleva `OT-`)
+- `CLAUDE.md` actualizado: "un remito por comanda" y ajustes solo por trabajo
+- `tsc` pasa
+
+**Pendiente / bloqueado**
+- Probar en la impresora térmica que cada remito sale cortado en su propio ticket
+- `docs/etapas.md` (E8 y E10) sigue describiendo la regla vieja como plan histórico; no se tocó
+- `emitir_remito` sigue aceptando ajuste y varias OT; la pantalla ya no los usa
+
+---

@@ -17,8 +17,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConsulta } from "@/hooks/use-consulta";
+import { cn } from "@/lib/utils";
 
-type Datos = { remito: RemitoConDoctor | null; lineas: LineaRemito[]; cuenta: ResumenCuenta | null };
+type Ticket = { remito: RemitoConDoctor; lineas: LineaRemito[]; cuenta: ResumenCuenta };
+type Datos = { tickets: Ticket[]; faltantes: number[] };
 
 export default function DocumentoRemitoPage() {
   return (
@@ -28,23 +30,44 @@ export default function DocumentoRemitoPage() {
   );
 }
 
+/**
+ * Uno o varios remitos: `?remito=12` o `?remitos=12,13,14`.
+ * Con varios, cada uno sale en su propio ticket, uno detrás del otro en la misma impresión.
+ */
 function RemitoImprimible() {
-  const numero = Number(useSearchParams().get("remito"));
+  const parametros = useSearchParams();
+  const pedidos = parametros.get("remitos") ?? parametros.get("remito") ?? "";
+  const numeros = pedidos
+    .split(",")
+    .map((n) => Number(n.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const clave = numeros.join(",");
 
   const { consulta, recargar } = useConsulta<Datos>(
     async () => {
-      if (!Number.isInteger(numero) || numero <= 0) return { remito: null, lineas: [], cuenta: null };
-      const remito = await buscarRemitoPorNumero(numero);
-      if (!remito) return { remito: null, lineas: [], cuenta: null };
-      const [lineas, cuenta] = await Promise.all([
-        listarLineasDeRemito(remito.id),
-        resumenDeCuenta(remito.doctor_id, remito.fecha, remito.total, remito.id),
-      ]);
-      return { remito, lineas, cuenta };
+      const tickets: Ticket[] = [];
+      const faltantes: number[] = [];
+      // De a uno y en orden: así el saldo de cada ticket sale igual que si se imprimiera solo.
+      for (const numero of numeros) {
+        const remito = await buscarRemitoPorNumero(numero);
+        if (!remito) {
+          faltantes.push(numero);
+          continue;
+        }
+        const [lineas, cuenta] = await Promise.all([
+          listarLineasDeRemito(remito.id),
+          resumenDeCuenta(remito.doctor_id, remito.fecha, remito.total, remito.id),
+        ]);
+        if (cuenta === null) faltantes.push(numero);
+        else tickets.push({ remito, lineas, cuenta });
+      }
+      return { tickets, faltantes };
     },
-    [numero],
+    [clave],
     "No se pudo cargar el remito. Revisá la conexión y probá de nuevo.",
   );
+
+  const tickets = consulta.estado === "listo" ? consulta.datos.tickets : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,9 +76,9 @@ function RemitoImprimible() {
           <ArrowLeft data-icon="inline-start" />
           Volver a remitos
         </Button>
-        <Button onClick={() => window.print()} disabled={consulta.estado !== "listo"}>
+        <Button onClick={() => window.print()} disabled={tickets.length === 0}>
           <Printer data-icon="inline-start" />
-          Imprimir o guardar en PDF
+          {tickets.length > 1 ? `Imprimir los ${tickets.length} remitos` : "Imprimir o guardar en PDF"}
         </Button>
       </div>
 
@@ -63,18 +86,30 @@ function RemitoImprimible() {
       {consulta.estado === "error" && (
         <ErrorConsulta mensaje={consulta.mensaje} onReintentar={recargar} />
       )}
-      {consulta.estado === "listo" &&
-        (consulta.datos.remito === null || consulta.datos.cuenta === null ? (
-          <p className="text-ink-3">No existe el remito {numero || "pedido"}.</p>
-        ) : (
-          <div className="w-fit border border-border bg-surface shadow-sm print:border-0 print:shadow-none">
-            <DocumentoRemito
-              remito={consulta.datos.remito}
-              lineas={consulta.datos.lineas}
-              cuenta={consulta.datos.cuenta}
-            />
-          </div>
-        ))}
+      {consulta.estado === "listo" && (
+        <>
+          {numeros.length === 0 && <p className="text-ink-3">No existe el remito pedido.</p>}
+          {consulta.datos.faltantes.length > 0 && (
+            <p className="text-ink-3 print:hidden">
+              {consulta.datos.faltantes.length === 1
+                ? `No existe el remito ${consulta.datos.faltantes[0]}.`
+                : `No existen los remitos ${consulta.datos.faltantes.join(", ")}.`}
+            </p>
+          )}
+          {tickets.map((t, i) => (
+            <div
+              key={t.remito.id}
+              className={cn(
+                "w-fit border border-border bg-surface shadow-sm print:border-0 print:shadow-none",
+                // Un corte entre ticket y ticket, sin dejar uno en blanco al final.
+                i < tickets.length - 1 && "print:break-after-page",
+              )}
+            >
+              <DocumentoRemito remito={t.remito} lineas={t.lineas} cuenta={t.cuenta} />
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
