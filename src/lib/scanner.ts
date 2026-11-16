@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, type RefObject } from "react";
-import { PREFIJO_OT } from "./impresion";
 
 export const PREFIJO_COMANDO = "CMD-";
 
@@ -21,11 +20,12 @@ export function interpretarEscaneo(texto: string): Escaneo {
   const limpio = texto.trim().toUpperCase();
   if (limpio === "") return { tipo: "desconocido", texto };
 
-  if (limpio.startsWith(PREFIJO_OT)) {
-    const numero = Number(limpio.slice(PREFIJO_OT.length));
-    return Number.isInteger(numero) && numero > 0
-      ? { tipo: "ot", numero }
-      : { tipo: "desconocido", texto };
+  // Comandas impresas antes del cambio: "OT-0000002", que la lectora con teclado
+  // en español entrega como "OT'0000002". Se acepta cualquier separador.
+  const viejo = /^OT\D?(\d+)$/.exec(limpio);
+  if (viejo) {
+    const numero = Number(viejo[1]);
+    return numero > 0 ? { tipo: "ot", numero } : { tipo: "desconocido", texto };
   }
 
   if (limpio.startsWith(PREFIJO_COMANDO)) {

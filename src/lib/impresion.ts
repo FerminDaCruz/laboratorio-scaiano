@@ -4,9 +4,12 @@
 
 export const ANCHO_TICKET_MM = 80;
 
-/** Prefijo del código de barras de una comanda: lo lee el escaneo de E8. */
-export const PREFIJO_OT = "OT-";
-
+/**
+ * Contenido del código de barras de una comanda: solo el número de orden
+ * ("0000002"), sin prefijo. La lectora se comporta como un teclado y con la
+ * distribución en español un "-" llega como "'", así que cualquier prefijo
+ * rompe la búsqueda por número.
+ */
 export function codigoDeBarrasDeOT(numeroFormateado: string): string {
-  return `${PREFIJO_OT}${numeroFormateado}`;
+  return numeroFormateado;
 }

@@ -1355,3 +1355,42 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 `database.types.ts` regenerado; `tsc` y `npm run build` pasan.
 
 ---
+
+### [2026-11-13] Datos · Limpieza de los registros de prueba en la nube
+
+**Hecho**
+- A pedido del usuario se borraron de la base de la nube todos los registros de prueba:
+  órdenes (8) con sus ítems, remitos (9) con sus líneas, movimientos de cuenta corriente (13)
+  con sus imputaciones, y el cierre de noviembre de 2026 (que se había cerrado el 03/11, a
+  mitad de mes, y trababa remitos y pagos con fecha de noviembre)
+- Se hizo con `TRUNCATE ... RESTART IDENTITY` en una sola transacción: no dispara los
+  triggers por fila que protegen el libro mayor y las órdenes, y no se tocó ninguna función
+- Los números de OT y de remito vuelven a empezar en 1
+- Se conservan doctores (66), obras sociales (5), trabajos (100), precios (82) y usuarios
+- Prueba en una transacción deshecha: orden → remito → pago en dólares con fecha de hoy
+  funcionan; no quedó nada guardado y los contadores siguen en 1
+
+**Pendiente / bloqueado**
+- `cerrar_periodo` todavía deja cerrar el mes en curso y no hay forma de reabrir un período
+  desde la app (propuesto, no hecho)
+- Si hay que seguir la numeración del sistema viejo, falta el número de OT y de remito en
+  el que quedó (ya figura en `docs/pendientes-externos.md`)
+
+---
+
+### [2026-11-16] Comanda · El código de barras lleva solo el número de orden
+
+**Hecho**
+- La comanda codificaba `OT-0000002`. La lectora se comporta como un teclado y, con la
+  distribución en español, el `-` llega como `'` (`OT'0000002`), así que la búsqueda por
+  número de orden no lo encontraba
+- `codigoDeBarrasDeOT` (`src/lib/impresion.ts`) ahora devuelve solo el número formateado
+  (`0000002`); se quitó `PREFIJO_OT`
+- `interpretarEscaneo` (`src/lib/scanner.ts`) sigue aceptando las comandas ya impresas:
+  `OT` + cualquier separador + número (`OT-…`, `OT'…`) se toma como esa OT
+- `tsc` pasa
+
+**Pendiente / bloqueado**
+- Probar con la lectora real que una comanda nueva se encuentra al escanearla en la búsqueda
+
+---
