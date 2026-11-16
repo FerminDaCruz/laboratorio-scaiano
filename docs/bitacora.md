@@ -1438,3 +1438,21 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - `emitir_remito` sigue aceptando ajuste y varias OT; la pantalla ya no los usa
 
 ---
+
+### [2026-11-16] Documentos · Logo y contacto del laboratorio en remito y liquidación
+
+**Hecho**
+- Logo del laboratorio en `public/logo-scaiano.png` (la imagen que pasó el usuario, recortada
+  al contenido para que no gaste papel en el ticket)
+- Remito: logo arriba a todo el ancho del ticket y, debajo, teléfono y mail centrados
+- Liquidación: logo arriba a la izquierda (70 mm) y teléfono y mail a la derecha, con una
+  línea que separa el membrete del resto
+- Logo, teléfono y mail viven en `src/lib/impresion.ts`: se cambian en un solo lugar
+- `tsc` pasa
+
+**Pendiente / bloqueado**
+- El mail se escribió como `laboratorioscaianodigital@gmail.com` (el pedido venía sin `@`):
+  confirmar con el usuario
+- Ver cómo sale el logo en la térmica: imprime en blanco y negro, el celeste sale gris
+
+---

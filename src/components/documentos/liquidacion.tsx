@@ -2,6 +2,7 @@
 
 import type { Liquidacion } from "@/components/liquidaciones/consultas";
 import { formatFechaCorta, formatOT, formatRemito } from "@/lib/format";
+import { LOGO_LABORATORIO, MAIL_LABORATORIO, TELEFONO_LABORATORIO } from "@/lib/impresion";
 import { formatARS } from "@/lib/money";
 
 const MESES = [
@@ -37,6 +38,9 @@ export function DocumentoLiquidacion({
           line-height: 1.35;
         }
         .liquidacion h1 { font-size: 13pt; font-weight: 600; margin: 0 0 2mm; }
+        .liquidacion .membrete { display: flex; align-items: center; justify-content: space-between; gap: 6mm; padding-bottom: 4mm; margin-bottom: 6mm; border-bottom: 1px solid #000; }
+        .liquidacion .membrete img { width: 70mm; height: auto; }
+        .liquidacion .membrete .contacto { text-align: right; }
         .liquidacion table { width: 100%; border-collapse: collapse; }
         .liquidacion th { text-align: left; border-bottom: 1px solid #000; padding: 1mm 1mm 1mm 0; font-weight: 600; }
         .liquidacion td { padding: 0.8mm 1mm 0.8mm 0; vertical-align: top; }
@@ -52,6 +56,14 @@ export function DocumentoLiquidacion({
       `}</style>
 
       <div className="liquidacion">
+        <div className="membrete">
+          <img src={LOGO_LABORATORIO} alt="Scaiano Laboratorio Dental" />
+          <div className="contacto">
+            <p>{TELEFONO_LABORATORIO}</p>
+            <p>{MAIL_LABORATORIO}</p>
+          </div>
+        </div>
+
         <h1>LIQUIDACIÓN {MESES[mes - 1].toUpperCase()} {anio}</h1>
         <p>
           dr/a: {doctor.nombre} (ficha {doctor.ficha})

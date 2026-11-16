@@ -4,7 +4,12 @@ import { Fragment } from "react";
 
 import type { LineaRemito, RemitoConDoctor, ResumenCuenta } from "@/components/remitos/consultas";
 import { formatFechaLarga, formatOT, formatRemito } from "@/lib/format";
-import { ANCHO_TICKET_MM } from "@/lib/impresion";
+import {
+  ANCHO_TICKET_MM,
+  LOGO_LABORATORIO,
+  MAIL_LABORATORIO,
+  TELEFONO_LABORATORIO,
+} from "@/lib/impresion";
 import { formatARS } from "@/lib/money";
 
 /** Remito de entrega (§5D). Blanco y negro, monoespaciado, medidas en mm. */
@@ -39,6 +44,8 @@ export function DocumentoRemito({
           line-height: 1.35;
         }
         .remito h1 { font-size: 13pt; font-weight: 600; margin: 0; }
+        .remito .membrete { text-align: center; margin-bottom: 2mm; }
+        .remito .membrete img { display: block; width: 100%; height: auto; margin: 0 auto 1mm; }
         .remito table { width: 100%; border-collapse: collapse; }
         .remito td { padding: 0.4mm 0; vertical-align: top; }
         .remito .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -55,6 +62,13 @@ export function DocumentoRemito({
       `}</style>
 
       <div className="remito">
+        <div className="membrete">
+          <img src={LOGO_LABORATORIO} alt="Scaiano Laboratorio Dental" />
+          <p>{TELEFONO_LABORATORIO}</p>
+          <p>{MAIL_LABORATORIO}</p>
+        </div>
+        <hr />
+
         {remito.anulado_en && <p className="anulado">ANULADO</p>}
 
         <h1>REMITO {formatRemito(remito.numero)}</h1>
