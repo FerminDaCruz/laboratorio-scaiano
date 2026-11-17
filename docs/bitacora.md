@@ -1587,3 +1587,35 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
   el que quedó (ya figura en `docs/pendientes-externos.md`)
 
 ---
+
+### [2026-11-17] Cuenta corriente · La antigüedad de la deuda coincide con el saldo después de anular
+
+**Hecho**
+- Error: en Cuenta corriente, la columna 0-30 no coincidía con el saldo aunque no hubiera
+  pagos. Causa: `anular_remito` creaba el contra-asiento pero no lo imputaba contra el
+  remito anulado. El saldo daba bien (los dos asientos se cancelan), pero el remito anulado
+  seguía en `v_deudas_pendientes` (y en la antigüedad), y la nota de crédito quedaba como
+  crédito suelto que se aplicaba solo al próximo remito. Además, los pagos que se liberaban
+  al anular no se volvían a aplicar hasta el próximo remito o pago
+- Migración `20261117090000_anular_remito_cancela_la_deuda.sql`: `anular_remito` ahora imputa
+  el contra-asiento contra el remito anulado y aplica los créditos liberados a las deudas
+  pendientes del doctor, de la más vieja a la más nueva. No se edita ni se borra ningún
+  asiento: solo cambian imputaciones, como ya hacía la función
+- Test nuevo `supabase/tests/antiguedad.sql` (SQL plano): en cada paso verifica que deuda
+  pendiente − crédito disponible = saldo, que no queden deuda y crédito suelto a la vez y
+  que la antigüedad sume lo mismo que la deuda pendiente. Casos: anular un remito pagado,
+  reemitir después de anular, anular sin reemplazo y anular todo
+
+**Aplicado** (en la nube, a pedido del usuario)
+- Con la función vieja el test falló: "quedó deuda 450000.00 y crédito suelto 600000.00 a la vez"
+- Con la migración, dentro de una transacción deshecha, pasó; después se aplicó de verdad y se
+  registró en `supabase_migrations.schema_migrations`; el test vuelve a pasar contra la nube
+- No hacía falta corregir datos: la base se había limpiado hoy
+
+**Pendiente / bloqueado**
+- Los tests locales no se corrieron (Docker apagado)
+- `schema_migrations` de la nube no tiene registradas `20261103090000`, `20261104090000` ni
+  `20261113090000`, aunque esos cambios están aplicados. Un `supabase db push` intentaría
+  repetirlas: registrarlas a mano antes de usar `db push`
+
+---
