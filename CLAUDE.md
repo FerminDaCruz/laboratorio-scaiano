@@ -63,7 +63,7 @@ confirmación. La lista de dependencias aprobadas está más abajo.
 | Fechas | date-fns, locale `es` | |
 | Códigos de barras | JsBarcode (Code 128) | Se generan en el cliente |
 | Íconos | lucide-react | |
-| Hosting | Cloudflare Pages | Lo despliega el usuario |
+| Hosting | Vercel (sitio estático) | Lo despliega el usuario |
 
 ### Dependencias aprobadas
 

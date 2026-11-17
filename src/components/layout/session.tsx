@@ -30,6 +30,38 @@ const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
 
 export const MODO_DEMO = Boolean(DEMO_EMAIL && DEMO_PASSWORD);
 
+/**
+ * La sesión dura un mes desde que se inició; después se vuelve a pedir la contraseña.
+ * Supabase renueva la sesión sola y sin límite (ponerle uno desde el panel es del plan
+ * pago), así que el vencimiento lo controla la app: anota cuándo empezó la sesión en
+ * este navegador y la cierra al pasar el plazo. Es comodidad, no seguridad: la
+ * protección de los datos sigue siendo la contraseña y RLS.
+ */
+const DURACION_SESION_MS = 30 * 24 * 60 * 60 * 1000;
+const CLAVE_INICIO_SESION = "lab:inicio-sesion";
+
+/** true si la sesión de este navegador ya pasó el plazo. Anota el inicio si no estaba. */
+function sesionVencida(): boolean {
+  try {
+    const guardado = Number(localStorage.getItem(CLAVE_INICIO_SESION));
+    if (!guardado) {
+      localStorage.setItem(CLAVE_INICIO_SESION, String(Date.now()));
+      return false;
+    }
+    return Date.now() - guardado > DURACION_SESION_MS;
+  } catch {
+    return false; // sin almacenamiento no se puede medir: la sesión sigue
+  }
+}
+
+function olvidarInicioDeSesion() {
+  try {
+    localStorage.removeItem(CLAVE_INICIO_SESION);
+  } catch {
+    // nada que borrar
+  }
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sesion, setSesion] = useState<EstadoSesion>({ estado: "cargando" });
 
@@ -46,7 +78,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     let demoIntentado = false;
 
     async function aplicar(session: Session | null) {
+      if (session && sesionVencida()) {
+        olvidarInicioDeSesion();
+        // signOut dispara onAuthStateChange sin sesión, que muestra el login.
+        await getSupabase().auth.signOut();
+        return;
+      }
       if (!session) {
+        olvidarInicioDeSesion();
         // En modo demo se entra solo, una sola vez: si falla, se muestra el login.
         if (MODO_DEMO && !demoIntentado) {
           demoIntentado = true;

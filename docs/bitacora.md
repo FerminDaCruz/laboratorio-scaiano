@@ -1502,3 +1502,88 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
 - El remito no se tocó (no se pidió)
 
 ---
+
+### [2026-11-16] Sesión · Vence al mes
+
+**Hecho**
+- La sesión dura 30 días desde que se inició en ese navegador; después se cierra sola y se
+  vuelve a pedir la contraseña (`src/components/layout/session.tsx`)
+- Supabase renueva la sesión sin límite y ponerle uno desde el panel es del plan pago, así
+  que el plazo lo controla la app: anota el inicio en `localStorage` (`lab:inicio-sesion`),
+  lo borra al cerrar sesión y lo revisa al abrir la app y en cada renovación del token (cada hora)
+- Las sesiones que ya estaban abiertas empiezan a contar desde hoy
+- Es comodidad, no seguridad: la protección sigue siendo la contraseña y RLS
+- `CLAUDE.md`: el hosting pasa a figurar como Vercel
+- `tsc` pasa
+
+**Decisiones**
+- El usuario propuso guardar las credenciales en variables de entorno de Vercel sin
+  `NEXT_PUBLIC_`. No sirve: el sitio es estático (`output: 'export'`) y esas variables solo
+  llegan a código de servidor, que no hay; y si la app entrara sola, cualquiera con el link
+  entraría. Las credenciales van en Supabase Auth y se escriben en el login
+
+**Pendiente / bloqueado**
+- Crear el usuario del laboratorio en Supabase (Authentication → Add user) y su fila en `usuarios`
+- Borrar `NEXT_PUBLIC_DEMO_EMAIL` y `NEXT_PUBLIC_DEMO_PASSWORD` en Vercel y volver a desplegar
+- Probar en el navegador
+
+---
+
+### [2026-11-16] Usuarios · Script para dar de alta al laboratorio y borrar los de prueba
+
+**Hecho**
+- Diagnóstico del "Database error" al borrar un usuario de prueba desde el panel: al borrarlo
+  de Auth se borra su fila en `usuarios` (cascade), pero `precios_trabajo`, `ordenes`,
+  `remitos`, `periodos` y `movimientos_cc` lo referencian (`creado_por`, `anulado_por`,
+  `cerrado_por`) sin `on delete`, así que la base frena el borrado
+- `supabase/snippets/usuarios-alta-y-baja.sql`, para pegar en el SQL Editor paso por paso:
+  1. lista los usuarios y cuántos registros tiene cada uno
+  2. habilita en `usuarios` al usuario del laboratorio (`laboratorioscaianodigital@gmail.com`, rol `admin`)
+  3. desvincula los registros del usuario de prueba (quedan sin autor, no se borran) y lo
+     borra de Auth. Si tiene asientos en `movimientos_cc` no lo borra (el libro mayor no se
+     toca): lo desactiva
+- No se corrió nada contra la base: lo corre el usuario desde el panel
+
+**Pendiente / bloqueado**
+- Que el usuario corra el script y confirme
+
+---
+
+### [2026-11-17] Usuarios · Laboratorio habilitado, usuario de prueba desactivado
+
+**Hecho** (en la base de la nube, a pedido del usuario, con `supabase db query --linked`)
+- `laboratorioscaianodigital@gmail.com` habilitado en `usuarios`: "Laboratorio Scaiano", rol `admin`, activo
+- `prueba@gmail.com` **no se pudo borrar**: tiene 7 asientos en `movimientos_cc` (además de
+  4 órdenes y 5 remitos), y el libro mayor no se toca. El script lo desactivó
+  (`usuarios.activo = false`): puede iniciar sesión pero queda "sin habilitar" y RLS no le
+  muestra nada
+- Verificado con el paso 1 del script después de correrlo
+
+**Pendiente / bloqueado**
+- Para que `prueba@gmail.com` ni siquiera pueda iniciar sesión: bloquearlo en el panel o
+  cambiarle la contraseña
+- Esos 7 asientos, 4 órdenes y 5 remitos son posteriores a la limpieza del 13/11: confirmar
+  si son de prueba. Si lo son, se corrigen anulando (contra-asiento), no borrando
+
+---
+
+### [2026-11-17] Datos · Segunda limpieza de prueba y baja de `prueba@gmail.com`
+
+**Hecho** (en la base de la nube, a pedido del usuario: "son todos de prueba")
+- Antes de borrar se verificó que todo lo que había era de `prueba@gmail.com`: 4 órdenes
+  (8 ítems), 5 remitos (6 líneas), 7 asientos, 2 imputaciones, ningún período
+- `TRUNCATE ... RESTART IDENTITY` en una sola transacción sobre `imputaciones`,
+  `movimientos_cc`, `remito_lineas`, `orden_items`, `ordenes`, `remitos`, `periodo_saldos`
+  y `periodos`, igual que la limpieza del 13/11
+- En la misma transacción se borró `prueba@gmail.com` de Auth (y por cascade de `usuarios`)
+- `ordenes_numero_seq` y `remitos_numero_seq` no son de identidad y no se reinician con
+  `RESTART IDENTITY`: se reiniciaron con `setval(..., 1, false)`. La próxima OT es la 1 y el
+  próximo remito el 1
+- Se conservan doctores (66), obras sociales (5), trabajos (100), precios (82)
+- Queda un solo usuario: `laboratorioscaianodigital@gmail.com`, admin, activo. Verificado
+
+**Pendiente / bloqueado**
+- Si hay que seguir la numeración del sistema viejo, falta el número de OT y de remito en
+  el que quedó (ya figura en `docs/pendientes-externos.md`)
+
+---
