@@ -1619,3 +1619,23 @@ referencia se guarda en pesos con `moneda = dolares`, y sin referencia se rechaz
   repetirlas: registrarlas a mano antes de usar `db push`
 
 ---
+
+### [2026-11-20] Layout · Logo en el sidebar e ícono de pestaña
+
+**Hecho**
+- Dos versiones del logo para el sidebar, que es oscuro en los dos temas, generadas a partir
+  de `public/logo-scaiano.png`, sin colores nuevos: fondo transparente, el celeste de la
+  marca tal cual y el azul marino pasado a `sidebar-ink` (sobre el fondo oscuro no se veía)
+  - `public/logo-scaiano-sidebar.png`: logo completo, en el sidebar abierto (≥1024px)
+  - `public/isotipo-scaiano-sidebar.png`: solo el diente, en el sidebar colapsado
+- `src/components/layout/sidebar.tsx`: el texto "Laboratorio Scaiano" del encabezado pasa a
+  ser el logo, que sigue llevando al inicio
+- Ícono de pestaña: `src/app/icon.png` (el diente con sus colores originales, 512×512,
+  transparente). Se borró `src/app/favicon.ico`, que era el ícono por defecto de Next
+- `tsc` y `npm run build` pasan; el export trae `<link rel="icon" href="/icon.png…">`
+
+**Pendiente / bloqueado**
+- Verlo en el navegador. A 16px el diente se ve chico y las líneas finas se pierden
+- `docs/design-system.md` no documenta el logo: agregarlo si se aprueba cómo quedó
+
+---

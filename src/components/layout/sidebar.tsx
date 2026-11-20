@@ -15,12 +15,16 @@ export function Sidebar() {
       aria-label="Principal"
       className="flex w-14 shrink-0 flex-col gap-6 overflow-y-auto bg-sidebar px-2 pb-4 text-sm text-sidebar-ink lg:w-[200px] print:hidden"
     >
-      <div className="flex h-12 items-center px-2">
+      {/* Logo en la versión para fondo oscuro (public/logo-scaiano-sidebar.png): el azul
+          marino del original pasa a sidebar-ink. Colapsado queda solo el diente. */}
+      <div className="flex items-center justify-center pt-3 lg:px-1">
         <Link
           href="/"
-          className="hidden truncate rounded-md px-1 font-semibold lg:block hover:bg-sidebar-hover"
+          aria-label="Laboratorio Scaiano, inicio"
+          className="block rounded-md p-1 hover:bg-sidebar-hover"
         >
-          Laboratorio Scaiano
+          <img src="/logo-scaiano-sidebar.png" alt="" className="hidden h-auto w-full lg:block" />
+          <img src="/isotipo-scaiano-sidebar.png" alt="" className="h-8 w-auto lg:hidden" />
         </Link>
       </div>
 
